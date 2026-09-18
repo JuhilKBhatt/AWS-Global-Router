@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aws_global_router_backend_dev
+    restart: unless-stopped
+    env_file:
+      - ./secrets/.dev.env
+    volumes:
+      # Live sync backend directory for instant reload without rebuilds
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    networks:
+      - router_net
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+      dockerfile: Dockerfile
+    container_name: aws_global_router_frontend_dev
+    restart: unless-stopped
+    env_file:
+      - ./secrets/.dev.env
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      # Live sync frontend source code for instant HMR
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - router_net
+
+networks:
+  router_net:
+    driver: bridge
