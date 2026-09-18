@@ -99,13 +99,57 @@ aws-global-router/
 
 ### Installation
 
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/JuhilKBhatt/AWS-Global-Router.git
+   cd AWS-Global-Router
+   ```
+
+2. **Configure Credentials:**
+   Populate your AWS programmatic credentials in `secrets/.dev.env` (for local development) or `secrets/.prod.env` (for production):
+   ```env
+   AWS_ACCESS_KEY_ID=your_aws_access_key_id
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+   AWS_DEFAULT_REGION=ap-southeast-2
+   ```
+
+3. **Launch with Docker Compose:**
+   * **Development (Live Sync & Hot Reload):**
+     ```bash
+     docker compose -f docker-compose.dev.yml up --build
+     ```
+     * Dashboard: [http://localhost:5173](http://localhost:5173)
+     * Backend API: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+   * **Production:**
+     ```bash
+     docker compose -f docker-compose.prod.yml up -d --build
+     ```
+     * Dashboard: [http://localhost](http://localhost)
+
 ---
 
 ## 📖 Usage Guide
 
+1. **Select Region & Routing Mode:**
+   * Select your desired AWS geographic region from the dropdown (e.g., Sydney, Tokyo, Frankfurt, N. Virginia).
+   * Specify **Split Tunnel Routing (`AllowedIPs`)**:
+     * `0.0.0.0/0`: **Full Tunnel** — Routes all device internet traffic through the AWS gateway.
+     * Custom CIDRs (e.g. `10.0.0.0/16, 192.168.1.0/24`): **Split Tunnel** — Only routes target networks through AWS, preserving local connection bandwidth.
+2. **Provision the Gateway:**
+   * Click **Spin Up WireGuard Endpoint**.
+   * The backend dynamically provisions an EC2 instance with an ephemeral security group (UDP 51820) and bootstraps WireGuard via `user-data` in ~60 seconds.
+3. **Connect Your Client:**
+   * **Mobile (iOS / Android):** Open the WireGuard mobile app, tap `+` > **Create from QR code**, and scan the displayed pairing code.
+   * **Desktop (macOS / Windows / Linux):** Download the generated `wg-aws-<region>.conf` file and import it into your desktop WireGuard client.
+   * Activate the tunnel in your WireGuard app to start routing traffic.
+4. **Instant Teardown:**
+   * When your browsing or testing session is complete, click **Destroy VPN** on the active endpoint card.
+   * The EC2 instance is terminated immediately to release compute and IPv4 resources and prevent ongoing charges.
+
 ---
 
-## 💰 Cost & Resource Optimization
+## 💰 Cost & Resource Optimisation
 
 * **Free Tier:** Eligible for the standard 750 hours/month of `t2.micro` or `t3.micro` during the first 12 months of AWS account ownership.
 * **Post-Free Tier On-Demand:** 
