@@ -1,0 +1,14 @@
+{
+ "title": "AWS Global Router",
+ "description": "",
+ "language": ["AWS", "EC2", "WireGuard", "Networking", "Vite"],
+ "liveDemo": "",
+ "images": [
+   ""
+ ],
+ "videoDemo": "",
+ "Priority": 1,
+ "type": "Solo",
+ "version": "Beta",
+ "Visibilty": true
+}
