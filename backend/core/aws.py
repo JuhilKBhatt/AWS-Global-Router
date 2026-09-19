@@ -126,18 +126,30 @@ PersistentKeepalive = 25
 
 def get_ec2_client(region_name: str) -> boto3.client:
     """Create a boto3 EC2 client for the specified region."""
+    access_key = (
+        os.getenv("AWS_EC2_ACCESS_KEY_ID")
+        or os.getenv("AWS_ACCESS_KEY_ID")
+    )
+    secret_key = (
+        os.getenv("AWS_EC2_SECRET_ACCESS_KEY")
+        or os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
     return boto3.client(
         "ec2",
         region_name=region_name,
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
     )
 
 
 def list_regions() -> List[Dict[str, str]]:
     """Retrieve list of enabled AWS regions, falling back to standard presets."""
     try:
-        default_region = os.getenv("AWS_DEFAULT_REGION", "ap-southeast-2")
+        default_region = (
+            os.getenv("AWS_EC2_DEFAULT_REGION")
+            or os.getenv("AWS_DEFAULT_REGION")
+            or "ap-southeast-2"
+        )
         client = get_ec2_client(default_region)
         response = client.describe_regions(
             Filters=[{"Name": "opt-in-status", "Values": ["opt-in-not-required", "opted-in"]}]
@@ -377,6 +389,19 @@ def terminate_vpn_instance(region: str, instance_id: str) -> Dict[str, Any]:
     term_res = client.terminate_instances(InstanceIds=[instance_id])
     state_updates = term_res.get("TerminatingInstances", [])
     current_state = state_updates[0]["CurrentState"]["Name"] if state_updates else "shutting-down"
+
+    # Calculate elapsed duration and record usage into DynamoDB
+    session = get_session(instance_id)
+    if session and session.get("launch_time"):
+        try:
+            import datetime
+            launch_dt = datetime.datetime.fromisoformat(session["launch_time"])
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+            duration_hrs = max((now_dt - launch_dt).total_seconds() / 3600.0, 0.05)
+            from core.dynamodb import record_usage_cost
+            record_usage_cost(instance_id=instance_id, elapsed_hours=duration_hrs, region=region)
+        except Exception as err:
+            logger.warning("Could not calculate or record session cost: %s", err)
 
     delete_session(instance_id)
 

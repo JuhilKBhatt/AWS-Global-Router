@@ -15,6 +15,7 @@ import {
 import {
   fetchRegions,
   fetchActiveInstances,
+  fetchSettingsFromDB,
   spinUpVpn,
   fetchInstanceStatus,
   destroyVpn,
@@ -27,7 +28,7 @@ import { RegionSelect } from './components/RegionSelect';
 import { StatusCard } from './components/StatusCard';
 import { QRCodeModal } from './components/QRCodeModal';
 import { CostsView } from './components/CostsView';
-import { SettingsView, loadSavedSettings, AppSettings } from './components/SettingsView';
+import { SettingsView, AppSettings, DEFAULT_SETTINGS } from './components/SettingsView';
 import { AppFooter } from './components/AppFooter';
 
 const { Header, Content } = Layout;
@@ -36,7 +37,7 @@ const { Title, Text } = Typography;
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<PageKey>('home');
   const [collapsed, setCollapsed] = useState<boolean>(false);
-  const [settings, setSettings] = useState<AppSettings>(loadSavedSettings);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   const [regions, setRegions] = useState<Region[]>([]);
   const [loadingRegions, setLoadingRegions] = useState<boolean>(true);
@@ -46,17 +47,21 @@ export const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [selectedQrInstance, setSelectedQrInstance] = useState<InstanceResponse | null>(null);
 
-  // Load regions and existing active instances on mount
+  // Load regions, settings from DynamoDB, and existing active instances on mount
   useEffect(() => {
     async function initData() {
       try {
         setLoadingRegions(true);
-        const [regionData, instanceData] = await Promise.all([
+        const [regionData, instanceData, dbSettings] = await Promise.all([
           fetchRegions(),
           fetchActiveInstances(),
+          fetchSettingsFromDB(),
         ]);
         setRegions(regionData);
         setActiveInstances(instanceData);
+        if (dbSettings) {
+          setSettings(dbSettings);
+        }
       } catch (err) {
         console.error('Initialization failed:', err);
         message.error('Could not connect to backend control plane.');

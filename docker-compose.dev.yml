@@ -10,6 +10,8 @@ services:
     volumes:
       # Live sync backend directory for instant reload without rebuilds
       - ./backend:/app
+      # Mount secrets for live environment updates without rebuild
+      - ./secrets:/app/secrets:ro
     ports:
       - "8000:8000"
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

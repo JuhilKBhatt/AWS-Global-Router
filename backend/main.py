@@ -1,9 +1,23 @@
 """AWS Global Router FastAPI entrypoint."""
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load environment configurations if present
+for env_candidate in [
+    Path("/app/secrets/.dev.env"),
+    Path("/app/secrets/.prod.env"),
+    Path(__file__).parent.parent / "secrets" / ".dev.env",
+    Path(__file__).parent.parent / "secrets" / ".prod.env",
+]:
+    if env_candidate.exists():
+        load_dotenv(dotenv_path=env_candidate, override=False)
+
 from routers.vpn import router as vpn_router
+from routers.parameters import router as parameters_router
 
 app = FastAPI(
     title="AWS Global Router API",
@@ -25,6 +39,7 @@ app.add_middleware(
 
 # Include Routers
 app.include_router(vpn_router)
+app.include_router(parameters_router)
 
 
 @app.get("/health", tags=["Health"])

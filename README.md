@@ -34,9 +34,9 @@ AWS Global Router is a self-hosted cloud automation platform that dynamically pr
 ---
 
 ### Tech stack
-- **Backend:** Python 3.13 (FastAPI/Flask), Boto3 (AWS SDK)
+- **Backend:** Python 3.13 (FastAPI), Boto3 (AWS SDK: EC2, DynamoDB), Cryptography
 - **Frontend:** React, TypeScript, Vite, Ant Design
-- **Cloud & Infrastructure:** AWS EC2, Cloudflare Zero Trust
+- **Cloud & Infrastructure:** AWS EC2, AWS DynamoDB, Cloudflare Zero Trust
 - **Networking:** WireGuard VPN, Split Tunneling
 - **DevOps & Containerisation:** Docker, Docker Compose, Github Actions
 ---
@@ -45,6 +45,8 @@ AWS Global Router is a self-hosted cloud automation platform that dynamically pr
 
 * **Global Multi-Region Dispatch:** Choose from any standard AWS region (Tokyo, London, Sydney, N. Virginia, Frankfurt, etc.).
 * **True Ephemeral Lifecycle:** Spin up in ~60 seconds; terminate on demand to pay fractions of a cent per session.
+* **DynamoDB Parameter Store:** Cloud-persisted configurations (TTL, monthly budget, default regions, split tunnel subnets) and real-time cost tracking stored in AWS DynamoDB (`aws_global_router_parameters`).
+* **Automated Cost Tracking & Visualizer:** Costs automatically update upon instance teardown with itemized breakdowns (EC2, IPv4, EBS, data transfer) and interactive multi-month stacked bar charts.
 * **Custom Split Tunneling:** Route only specific corporate subnets, lab networks, or web targets through the tunnel, preserving mobile and home bandwidth.
 * **Mobile & Desktop Friendly:** Scan the generated QR code directly in the official WireGuard app on iOS/Android or copy the client profile to macOS/Windows/Linux.
 * **Hardened Security Posture:** 
@@ -68,22 +70,28 @@ aws-global-router/
 │   ├── main.py                  # FastAPI application entrypoint
 │   ├── core/
 │   │   ├── aws.py               # Boto3 EC2 provisioning & teardown logic
-│   │   └── wireguard_template.sh         # WireGuard user_data bootstrap script generator
+│   │   ├── dynamodb.py          # Boto3 DynamoDB CRUD parameter store & cost tracking
+│   │   └── wireguard_template.sh # WireGuard user_data bootstrap script generator
 │   └── routers/
-│       └── vpn.py               # API endpoints (/regions, /spin-up, /status, /destroy)
+│       ├── vpn.py               # API endpoints (/regions, /spin-up, /status, /destroy)
+│       └── parameters.py        # DynamoDB endpoints (/settings, /costs, /list, /raw)
 └── frontend/
     ├── Dockerfile
     ├── package.json
     ├── vite.config.ts
     ├── tsconfig.json
     └── src/
-        ├── App.tsx              # Main dashboard view
+        ├── App.tsx              # Main dashboard view & navigation
         ├── components/
         │   ├── RegionSelect.tsx # Ant Design region selector
         │   ├── QRCodeModal.tsx  # WireGuard pairing modal
-        │   └── StatusCard.tsx   # Active instance state & destroy actions
+        │   ├── StatusCard.tsx   # Active instance state & destroy actions
+        │   ├── CostsView.tsx    # DynamoDB cost breakdown & stacked bar chart
+        │   ├── SettingsView.tsx # DynamoDB settings configuration
+        │   ├── Navbar.tsx       # Top/side navigation bar
+        │   └── Footer.tsx       # App footer with copyright and license
         └── api/
-            └── vpnClient.ts     # Typed API client
+            └── vpnClient.ts     # Typed API client with DynamoDB endpoints
 ```
 
 ---
@@ -93,8 +101,11 @@ aws-global-router/
 ### Prerequisites
 
 * [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/) installed.
-* An active **AWS Account** with programmatic IAM credentials.
-* **IAM Permissions:** Policies allowing `ec2:RunInstances`, `ec2:TerminateInstances`, `ec2:DescribeInstances`, `ec2:CreateSecurityGroup`, `ec2:AuthorizeSecurityGroupIngress`, and `ec2:CreateTags`.
+* An active **AWS Account** with programmatic IAM credentials for EC2 and DynamoDB.
+* **DynamoDB Table:** `aws_global_router_parameters` with partition key `parameters` (String).
+* **IAM Permissions:**
+  * EC2: `ec2:RunInstances`, `ec2:TerminateInstances`, `ec2:DescribeInstances`, `ec2:CreateSecurityGroup`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:CreateTags`.
+  * DynamoDB: `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`, `dynamodb:Scan`.
 * Official [WireGuard Client](https://www.wireguard.com/install/) installed on your phone or computer.
 
 ### Installation
@@ -108,9 +119,16 @@ aws-global-router/
 2. **Configure Credentials:**
    Populate your AWS programmatic credentials in `secrets/.dev.env` (for local development) or `secrets/.prod.env` (for production):
    ```env
-   AWS_ACCESS_KEY_ID=your_aws_access_key_id
-   AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
-   AWS_DEFAULT_REGION=ap-southeast-2
+   # AWS EC2 Credentials
+   AWS_EC2_ACCESS_KEY_ID=your_ec2_access_key_id
+   AWS_EC2_SECRET_ACCESS_KEY=your_ec2_secret_access_key
+   AWS_EC2_DEFAULT_REGION=ap-southeast-2
+
+   # AWS DynamoDB Credentials
+   AWS_DYNAMODB_ACCESS_KEY_ID=your_dynamodb_access_key_id
+   AWS_DYNAMODB_SECRET_ACCESS_KEY=your_dynamodb_secret_access_key
+   AWS_DYNAMODB_DEFAULT_REGION=ap-southeast-2
+   AWS_DYNAMODB_TABLE_NAME=aws_global_router_parameters
    ```
 
 3. **Launch with Docker Compose:**
