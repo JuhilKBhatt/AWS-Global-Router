@@ -21,12 +21,13 @@ import {
   ThunderboltOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
-import { InstanceResponse } from '../api/vpnClient';
+import { InstanceResponse, Region } from '../api/vpnClient';
 
 const { Text, Paragraph } = Typography;
 
 interface StatusCardProps {
   instances: InstanceResponse[];
+  regions?: Region[];
   onOpenQR: (instance: InstanceResponse) => void;
   onDestroy: (instance: InstanceResponse) => void;
   destroyingId?: string | null;
@@ -36,6 +37,7 @@ interface StatusCardProps {
 
 export const StatusCard: React.FC<StatusCardProps> = ({
   instances,
+  regions = [],
   onOpenQR,
   onDestroy,
   destroyingId,
@@ -43,6 +45,11 @@ export const StatusCard: React.FC<StatusCardProps> = ({
   isRefreshing,
 }) => {
   const [activeTabKey, setActiveTabKey] = useState<string>('0');
+
+  const getRegionName = (regionId: string) => {
+    const found = regions.find((r) => r.id === regionId);
+    return found ? found.name : regionId;
+  };
 
   if (instances.length === 0) {
     return (
@@ -180,7 +187,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
               {getStatusTag(inst.state)}
             </Descriptions.Item>
             <Descriptions.Item label="AWS Region">
-              <Tag color="blue">{inst.region}</Tag>
+              <Tag color="blue">{getRegionName(inst.region)} ({inst.region})</Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Public IPv4">
               {inst.public_ip ? (
@@ -215,7 +222,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
         <div style={{ marginTop: 12, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <Popconfirm
             title="Terminate VPN Instance"
-            description={`Destroy node ${inst.instance_id} in ${inst.region}? Compute charges will cease immediately.`}
+            description={`Destroy node ${inst.instance_id} in ${getRegionName(inst.region)}? Compute charges will cease immediately.`}
             onConfirm={() => onDestroy(inst)}
             okText="Destroy"
             cancelText="Cancel"
@@ -293,7 +300,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
               label: (
                 <Space size={6}>
                   <Badge status={isRunning ? 'success' : 'processing'} />
-                  <span>{inst.region}</span>
+                  <span>{getRegionName(inst.region)}</span>
                 </Space>
               ),
               children: renderInstanceDetails(inst),

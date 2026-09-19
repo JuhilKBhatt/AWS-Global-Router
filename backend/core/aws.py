@@ -21,15 +21,69 @@ SECURITY_GROUP_DESC = "Security Group for AWS Global Router WireGuard VPN (UDP 5
 DEFAULT_WIREGUARD_PORT = 51820
 SESSION_FILE_PATH = Path(os.getenv("VPN_SESSION_FILE", "/app/.sessions.json"))
 
+AWS_REGION_NAMES: Dict[str, str] = {
+    # Asia Pacific
+    "ap-southeast-2": "Sydney, Australia",
+    "ap-southeast-4": "Melbourne, Australia",
+    "ap-northeast-1": "Tokyo, Japan",
+    "ap-northeast-2": "Seoul, South Korea",
+    "ap-northeast-3": "Osaka, Japan",
+    "ap-south-1": "Mumbai, India",
+    "ap-south-2": "Hyderabad, India",
+    "ap-southeast-1": "Singapore",
+    "ap-southeast-3": "Jakarta, Indonesia",
+    "ap-southeast-5": "Malaysia",
+    "ap-southeast-7": "Auckland, New Zealand",
+    "ap-east-1": "Hong Kong",
+
+    # North America
+    "us-east-1": "N. Virginia, United States",
+    "us-east-2": "Ohio, United States",
+    "us-west-1": "N. California, United States",
+    "us-west-2": "Oregon, United States",
+    "ca-central-1": "Central, Canada",
+    "ca-west-1": "Calgary, Canada",
+    "mx-central-1": "Central, Mexico",
+
+    # Europe
+    "eu-west-1": "Dublin, Ireland",
+    "eu-west-2": "London, United Kingdom",
+    "eu-west-3": "Paris, France",
+    "eu-central-1": "Frankfurt, Germany",
+    "eu-central-2": "Zurich, Switzerland",
+    "eu-north-1": "Stockholm, Sweden",
+    "eu-south-1": "Milan, Italy",
+    "eu-south-2": "Madrid, Spain",
+
+    # Middle East & Africa
+    "me-south-1": "Bahrain",
+    "me-central-1": "UAE",
+    "il-central-1": "Tel Aviv, Israel",
+    "af-south-1": "Cape Town, South Africa",
+
+    # South America
+    "sa-east-1": "São Paulo, Brazil",
+}
+
 STANDARD_REGIONS = [
-    {"id": "ap-southeast-2", "name": "Sydney (ap-southeast-2)"},
-    {"id": "us-east-1", "name": "N. Virginia (us-east-1)"},
-    {"id": "us-west-2", "name": "Oregon (us-west-2)"},
-    {"id": "eu-west-1", "name": "Ireland (eu-west-1)"},
-    {"id": "eu-central-1", "name": "Frankfurt (eu-central-1)"},
-    {"id": "ap-northeast-1", "name": "Tokyo (ap-northeast-1)"},
-    {"id": "ap-southeast-1", "name": "Singapore (ap-southeast-1)"},
-    {"id": "eu-west-2", "name": "London (eu-west-2)"},
+    {"id": "ap-southeast-2", "name": "Sydney, Australia"},
+    {"id": "ap-southeast-4", "name": "Melbourne, Australia"},
+    {"id": "ap-northeast-1", "name": "Tokyo, Japan"},
+    {"id": "ap-northeast-3", "name": "Osaka, Japan"},
+    {"id": "ap-northeast-2", "name": "Seoul, South Korea"},
+    {"id": "ap-south-1", "name": "Mumbai, India"},
+    {"id": "ap-southeast-1", "name": "Singapore"},
+    {"id": "us-east-1", "name": "N. Virginia, United States"},
+    {"id": "us-east-2", "name": "Ohio, United States"},
+    {"id": "us-west-1", "name": "N. California, United States"},
+    {"id": "us-west-2", "name": "Oregon, United States"},
+    {"id": "ca-central-1", "name": "Central, Canada"},
+    {"id": "eu-west-1", "name": "Dublin, Ireland"},
+    {"id": "eu-west-2", "name": "London, United Kingdom"},
+    {"id": "eu-west-3", "name": "Paris, France"},
+    {"id": "eu-central-1", "name": "Frankfurt, Germany"},
+    {"id": "eu-north-1", "name": "Stockholm, Sweden"},
+    {"id": "sa-east-1", "name": "São Paulo, Brazil"},
 ]
 
 
@@ -143,7 +197,7 @@ def get_ec2_client(region_name: str) -> boto3.client:
 
 
 def list_regions() -> List[Dict[str, str]]:
-    """Retrieve list of enabled AWS regions, falling back to standard presets."""
+    """Retrieve list of enabled AWS regions mapped to friendly city/area and country names."""
     try:
         default_region = (
             os.getenv("AWS_EC2_DEFAULT_REGION")
@@ -154,10 +208,16 @@ def list_regions() -> List[Dict[str, str]]:
         response = client.describe_regions(
             Filters=[{"Name": "opt-in-status", "Values": ["opt-in-not-required", "opted-in"]}]
         )
-        regions = [
-            {"id": r["RegionName"], "name": f"{r['RegionName']}"}
-            for r in response.get("Regions", [])
-        ]
+        regions: List[Dict[str, str]] = []
+        for r in response.get("Regions", []):
+            rid = r["RegionName"]
+            friendly = AWS_REGION_NAMES.get(rid, rid)
+            regions.append({
+                "id": rid,
+                "name": friendly,
+            })
+        # Sort alphabetically by country/city name for clean user browsing
+        regions.sort(key=lambda x: x["name"])
         return regions or STANDARD_REGIONS
     except Exception as exc:
         logger.warning("Failed to describe AWS regions via Boto3, using standard fallback: %s", exc)

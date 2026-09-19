@@ -213,6 +213,7 @@ export const App: React.FC = () => {
                 <Col xs={24} lg={12}>
                   <StatusCard
                     instances={activeInstances}
+                    regions={regions}
                     onOpenQR={(inst) => setSelectedQrInstance(inst)}
                     onDestroy={handleDestroy}
                     destroyingId={destroyingId}
