@@ -4,11 +4,13 @@
  "language": ["Python", "FastAPI", "React", "TypeScript", "AWS EC2", "AWS DynamoDB", "WireGuard", "Docker", "Boto3", "Vite"],
  "liveDemo": "",
  "images": [
-   ""
+   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817560/AWS-Global-Router-img-1_cor1uh.png",
+   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817558/AWS-Global-Router-img-2_rlydr0.png",
+   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817559/AWS-Global-Router-img-3_vkxant.png"
  ],
- "videoDemo": "",
+ "videoDemo": "https://res.cloudinary.com/dmj4ggkjq/video/upload/v1789817555/AWS-Global-Router-video_nf1ewi.mov",
  "Priority": 1,
  "type": "Solo",
- "version": "Beta",
+ "version": "Prod",
  "Visibilty": true
 }
