@@ -16,6 +16,7 @@ export interface SpinUpRequest {
   region: string;
   instance_type?: string;
   allowed_ips?: string;
+  ttl_minutes?: number;
 }
 
 export interface InstanceResponse {
@@ -26,6 +27,7 @@ export interface InstanceResponse {
   instance_type?: string;
   launch_time?: string;
   client_config?: string;
+  ttl_minutes?: number | null;
 }
 
 export interface DestroyResponse {
@@ -37,6 +39,11 @@ export interface DestroyResponse {
 
 export async function fetchRegions(): Promise<Region[]> {
   const res = await api.get<Region[]>('/regions');
+  return res.data;
+}
+
+export async function fetchActiveInstances(): Promise<InstanceResponse[]> {
+  const res = await api.get<InstanceResponse[]>('/instances');
   return res.data;
 }
 

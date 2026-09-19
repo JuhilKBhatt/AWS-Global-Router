@@ -168,7 +168,6 @@ def get_latest_ubuntu_ami(client: Any) -> str:
         images = response.get("Images", [])
         if not images:
             raise RuntimeError("No Ubuntu 24.04 AMIs found")
-        # Sort by CreationDate descending
         images.sort(key=lambda x: x.get("CreationDate", ""), reverse=True)
         return images[0]["ImageId"]
     except Exception as exc:
@@ -218,8 +217,9 @@ def generate_user_data(
     server_privkey: str,
     client_pubkey: str,
     port: int = DEFAULT_WIREGUARD_PORT,
+    ttl_minutes: int = 60,
 ) -> str:
-    """Render bootstrap user-data script from template with injected keypair."""
+    """Render bootstrap user-data script from template with injected keypair and TTL."""
     template_path = Path(__file__).parent / "wireguard_template.sh"
     if not template_path.exists():
         raise FileNotFoundError(f"Template script missing at {template_path}")
@@ -228,6 +228,7 @@ def generate_user_data(
     script = script.replace('SERVER_PORT="${SERVER_PORT:-51820}"', f'SERVER_PORT="{port}"')
     script = script.replace('SERVER_PRIVKEY="${SERVER_PRIVKEY:-}"', f'SERVER_PRIVKEY="{server_privkey}"')
     script = script.replace('CLIENT_PUBKEY="${CLIENT_PUBKEY:-}"', f'CLIENT_PUBKEY="{client_pubkey}"')
+    script = script.replace('TTL_MINUTES="${TTL_MINUTES:-60}"', f'TTL_MINUTES="{ttl_minutes}"')
     return script
 
 
@@ -235,13 +236,13 @@ def provision_vpn_instance(
     region: str,
     instance_type: str = "t3.micro",
     allowed_ips: str = "0.0.0.0/0",
+    ttl_minutes: int = 60,
 ) -> Dict[str, Any]:
-    """Provision a new ephemeral EC2 instance configured with WireGuard."""
+    """Provision a new ephemeral EC2 instance configured with WireGuard and automated TTL."""
     client = get_ec2_client(region)
     ami_id = get_latest_ubuntu_ami(client)
     sg_id = ensure_security_group(client)
 
-    # Generate genuine 32-byte Curve25519 keypairs for server & client
     server_priv, server_pub = generate_wireguard_keypair()
     client_priv, client_pub = generate_wireguard_keypair()
 
@@ -249,31 +250,38 @@ def provision_vpn_instance(
         server_privkey=server_priv,
         client_pubkey=client_pub,
         port=DEFAULT_WIREGUARD_PORT,
+        ttl_minutes=ttl_minutes,
     )
 
-    run_response = client.run_instances(
-        ImageId=ami_id,
-        InstanceType=instance_type,
-        MinCount=1,
-        MaxCount=1,
-        SecurityGroupIds=[sg_id],
-        UserData=user_data_script,
-        TagSpecifications=[
+    run_kwargs: Dict[str, Any] = {
+        "ImageId": ami_id,
+        "InstanceType": instance_type,
+        "MinCount": 1,
+        "MaxCount": 1,
+        "SecurityGroupIds": [sg_id],
+        "UserData": user_data_script,
+        "TagSpecifications": [
             {
                 "ResourceType": "instance",
                 "Tags": [
                     {"Key": "Name", "Value": "aws-global-router-vpn-node"},
                     {"Key": "ManagedBy", "Value": "aws-global-router"},
                     {"Key": "Region", "Value": region},
+                    {"Key": "TTL", "Value": str(ttl_minutes)},
                 ],
             }
         ],
-    )
+    }
+
+    # Automatically terminate instance when shutdown is invoked by the TTL script
+    if ttl_minutes > 0:
+        run_kwargs["InstanceInitiatedShutdownBehavior"] = "terminate"
+
+    run_response = client.run_instances(**run_kwargs)
 
     instance = run_response["Instances"][0]
     instance_id = instance["InstanceId"]
 
-    # Store cryptographic session details securely on backend
     save_session(
         instance_id=instance_id,
         data={
@@ -281,6 +289,7 @@ def provision_vpn_instance(
             "region": region,
             "instance_type": instance_type,
             "allowed_ips": allowed_ips,
+            "ttl_minutes": ttl_minutes,
             "client_private_key": client_priv,
             "client_public_key": client_pub,
             "server_public_key": server_pub,
@@ -294,6 +303,7 @@ def provision_vpn_instance(
         "instance_type": instance_type,
         "state": instance["State"]["Name"],
         "launch_time": instance["LaunchTime"].isoformat() if "LaunchTime" in instance else None,
+        "ttl_minutes": ttl_minutes,
     }
 
 
@@ -308,6 +318,7 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
     inst = reservations[0]["Instances"][0]
     public_ip = inst.get("PublicIpAddress")
     state = inst.get("State", {}).get("Name", "unknown")
+    session = get_session(instance_id)
 
     result: Dict[str, Any] = {
         "instance_id": instance_id,
@@ -316,11 +327,10 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
         "public_ip": public_ip,
         "instance_type": inst.get("InstanceType"),
         "launch_time": inst.get("LaunchTime").isoformat() if "LaunchTime" in inst else None,
+        "ttl_minutes": session.get("ttl_minutes", 60) if session else None,
     }
 
-    # If public IP is ready, assemble client config using stored keypair
     if public_ip:
-        session = get_session(instance_id)
         if session and session.get("client_private_key") and session.get("server_public_key"):
             result["client_config"] = build_wireguard_client_config(
                 client_private_key=session["client_private_key"],
@@ -336,6 +346,29 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
             )
 
     return result
+
+
+def list_active_instances() -> List[Dict[str, Any]]:
+    """Query and return all active VPN nodes across recorded sessions."""
+    sessions = load_sessions()
+    active_instances: List[Dict[str, Any]] = []
+
+    for instance_id, session in list(sessions.items()):
+        region = session.get("region")
+        if not region:
+            continue
+        try:
+            status = get_instance_status(region, instance_id)
+            if status["state"] in ["terminated"]:
+                delete_session(instance_id)
+            else:
+                active_instances.append(status)
+        except Exception as exc:
+            logger.warning("Could not fetch status for session %s: %s", instance_id, exc)
+            if "not found" in str(exc).lower() or "InvalidInstanceID.NotFound" in str(exc):
+                delete_session(instance_id)
+
+    return active_instances
 
 
 def terminate_vpn_instance(region: str, instance_id: str) -> Dict[str, Any]:

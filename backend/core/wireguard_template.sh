@@ -7,6 +7,7 @@ SERVER_NET="${SERVER_NET:-10.8.0.1/24}"
 CLIENT_NET="${CLIENT_NET:-10.8.0.2/32}"
 SERVER_PRIVKEY="${SERVER_PRIVKEY:-}"
 CLIENT_PUBKEY="${CLIENT_PUBKEY:-}"
+TTL_MINUTES="${TTL_MINUTES:-60}"
 
 # Update and install WireGuard
 export DEBIAN_FRONTEND=noninteractive
@@ -44,3 +45,8 @@ systemctl restart wg-quick@wg0
 
 # Mark bootstrapping complete
 echo "WIREGUARD_READY" > /etc/wireguard/.ready
+
+# Optional automated TTL shutdown / self-teardown
+if [ "${TTL_MINUTES}" -gt 0 ]; then
+    shutdown -h "+${TTL_MINUTES}" "AWS Global Router session TTL expired" &
+fi

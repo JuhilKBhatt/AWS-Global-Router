@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from core.aws import (
     get_instance_status,
+    list_active_instances,
     list_regions,
     provision_vpn_instance,
     terminate_vpn_instance,
@@ -28,6 +29,7 @@ class SpinUpRequest(BaseModel):
     region: str = Field(..., description="AWS region identifier, e.g. ap-southeast-2")
     instance_type: str = Field(default="t3.micro", description="EC2 instance type")
     allowed_ips: str = Field(default="0.0.0.0/0", description="Split-tunnel CIDR routing range")
+    ttl_minutes: int = Field(default=60, description="Session TTL in minutes before automatic self-teardown")
 
 
 class InstanceResponse(BaseModel):
@@ -38,6 +40,7 @@ class InstanceResponse(BaseModel):
     instance_type: Optional[str] = None
     launch_time: Optional[str] = None
     client_config: Optional[str] = None
+    ttl_minutes: Optional[int] = None
 
 
 class DestroyResponse(BaseModel):
@@ -57,6 +60,16 @@ def get_regions() -> List[Dict[str, str]]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/instances", response_model=List[InstanceResponse])
+def get_instances() -> List[Dict[str, Any]]:
+    """List all currently active or bootstrapping VPN instances."""
+    try:
+        return list_active_instances()
+    except Exception as exc:
+        logger.error("Failed to list active instances: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post("/spin-up", response_model=InstanceResponse)
 def spin_up_vpn(payload: SpinUpRequest) -> Dict[str, Any]:
     """Dynamically provision a new WireGuard VPN node in the target region."""
@@ -65,6 +78,7 @@ def spin_up_vpn(payload: SpinUpRequest) -> Dict[str, Any]:
             region=payload.region,
             instance_type=payload.instance_type,
             allowed_ips=payload.allowed_ips,
+            ttl_minutes=payload.ttl_minutes,
         )
         return result
     except Exception as exc:
