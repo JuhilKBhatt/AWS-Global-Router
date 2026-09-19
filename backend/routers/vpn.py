@@ -80,23 +80,6 @@ def get_status(
     """Check current status and retrieve connection details for a VPN node."""
     try:
         status_data = get_instance_status(region=region, instance_id=instance_id)
-
-        # Build sample WireGuard client config if public IP is available
-        public_ip = status_data.get("public_ip")
-        if public_ip:
-            sample_conf = f"""[Interface]
-PrivateKey = CLIENT_PRIVATE_KEY_GENERATED_ON_BOOT
-Address = 10.8.0.2/24
-DNS = 1.1.1.1, 1.0.0.1
-
-[Peer]
-PublicKey = SERVER_PUBLIC_KEY_GENERATED_ON_BOOT
-Endpoint = {public_ip}:51820
-AllowedIPs = 0.0.0.0/0
-PersistentKeepalive = 25
-"""
-            status_data["client_config"] = sample_conf
-
         return status_data
     except Exception as exc:
         logger.error("Failed to describe instance %s: %s", instance_id, exc)

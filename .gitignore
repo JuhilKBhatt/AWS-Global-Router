@@ -6,6 +6,8 @@ secrets/.dev.env
 secrets/.prod.env
 .env
 *.env.local
+.sessions.json
+backend/.sessions.json
 
 # Python
 backend/__pycache__/

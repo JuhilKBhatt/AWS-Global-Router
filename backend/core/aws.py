@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 
 logger = logging.getLogger(__name__)
 
 SECURITY_GROUP_NAME = "aws-global-router-wg-sg"
 SECURITY_GROUP_DESC = "Security Group for AWS Global Router WireGuard VPN (UDP 51820)"
 DEFAULT_WIREGUARD_PORT = 51820
+SESSION_FILE_PATH = Path(os.getenv("VPN_SESSION_FILE", "/app/.sessions.json"))
 
 STANDARD_REGIONS = [
     {"id": "ap-southeast-2", "name": "Sydney (ap-southeast-2)"},
@@ -26,6 +31,97 @@ STANDARD_REGIONS = [
     {"id": "ap-southeast-1", "name": "Singapore (ap-southeast-1)"},
     {"id": "eu-west-2", "name": "London (eu-west-2)"},
 ]
+
+
+def generate_wireguard_keypair() -> Tuple[str, str]:
+    """Generate a standard 32-byte Curve25519 WireGuard keypair in base64 encoding."""
+    private_key = x25519.X25519PrivateKey.generate()
+    private_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_bytes = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    priv_b64 = base64.b64encode(private_bytes).decode("utf-8")
+    pub_b64 = base64.b64encode(public_bytes).decode("utf-8")
+    return priv_b64, pub_b64
+
+
+def _get_session_store_path() -> Path:
+    """Resolve writable session storage file path."""
+    try:
+        SESSION_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        return SESSION_FILE_PATH
+    except Exception:
+        fallback = Path("/tmp/.sessions.json")
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def load_sessions() -> Dict[str, Dict[str, Any]]:
+    """Load session metadata from disk."""
+    path = _get_session_store_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Could not read sessions file: %s", exc)
+        return {}
+
+
+def save_session(instance_id: str, data: Dict[str, Any]) -> None:
+    """Save session metadata for an instance."""
+    path = _get_session_store_path()
+    sessions = load_sessions()
+    sessions[instance_id] = data
+    try:
+        path.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
+        path.chmod(0o600)
+    except Exception as exc:
+        logger.error("Failed to persist session for %s: %s", instance_id, exc)
+
+
+def get_session(instance_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve session metadata for an instance."""
+    sessions = load_sessions()
+    return sessions.get(instance_id)
+
+
+def delete_session(instance_id: str) -> None:
+    """Remove session metadata for a terminated instance."""
+    path = _get_session_store_path()
+    sessions = load_sessions()
+    if instance_id in sessions:
+        del sessions[instance_id]
+        try:
+            path.write_text(json.dumps(sessions, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Could not update sessions file on delete: %s", exc)
+
+
+def build_wireguard_client_config(
+    client_private_key: str,
+    server_public_key: str,
+    public_ip: str,
+    allowed_ips: str = "0.0.0.0/0",
+    port: int = DEFAULT_WIREGUARD_PORT,
+) -> str:
+    """Construct a valid WireGuard client .conf file with real base64 Curve25519 keys."""
+    return f"""[Interface]
+PrivateKey = {client_private_key}
+Address = 10.8.0.2/24
+DNS = 1.1.1.1, 1.0.0.1
+
+[Peer]
+PublicKey = {server_public_key}
+Endpoint = {public_ip}:{port}
+AllowedIPs = {allowed_ips}
+PersistentKeepalive = 25
+"""
 
 
 def get_ec2_client(region_name: str) -> boto3.client:
@@ -83,7 +179,6 @@ def get_latest_ubuntu_ami(client: Any) -> str:
 def ensure_security_group(client: Any, port: int = DEFAULT_WIREGUARD_PORT) -> str:
     """Ensure the ephemeral WireGuard Security Group exists with UDP ingress allowed."""
     try:
-        # Check if already exists
         sgs = client.describe_security_groups(
             Filters=[{"Name": "group-name", "Values": [SECURITY_GROUP_NAME]}]
         )
@@ -92,7 +187,6 @@ def ensure_security_group(client: Any, port: int = DEFAULT_WIREGUARD_PORT) -> st
     except ClientError as exc:
         logger.info("Security group lookup: %s", exc)
 
-    # Create security group
     vpcs = client.describe_vpcs(Filters=[{"Name": "is-default", "Values": ["true"]}])
     vpc_id = vpcs["Vpcs"][0]["VpcId"] if vpcs.get("Vpcs") else None
 
@@ -106,7 +200,6 @@ def ensure_security_group(client: Any, port: int = DEFAULT_WIREGUARD_PORT) -> st
     create_res = client.create_security_group(**kwargs)
     sg_id = create_res["GroupId"]
 
-    # Authorize UDP port for WireGuard
     client.authorize_security_group_ingress(
         GroupId=sg_id,
         IpPermissions=[
@@ -121,15 +214,20 @@ def ensure_security_group(client: Any, port: int = DEFAULT_WIREGUARD_PORT) -> st
     return sg_id
 
 
-def generate_user_data(allowed_ips: str = "0.0.0.0/0", port: int = DEFAULT_WIREGUARD_PORT) -> str:
-    """Render bootstrap user-data script from template."""
+def generate_user_data(
+    server_privkey: str,
+    client_pubkey: str,
+    port: int = DEFAULT_WIREGUARD_PORT,
+) -> str:
+    """Render bootstrap user-data script from template with injected keypair."""
     template_path = Path(__file__).parent / "wireguard_template.sh"
     if not template_path.exists():
         raise FileNotFoundError(f"Template script missing at {template_path}")
 
     script = template_path.read_text(encoding="utf-8")
     script = script.replace('SERVER_PORT="${SERVER_PORT:-51820}"', f'SERVER_PORT="{port}"')
-    script = script.replace('ALLOWED_IPS="${ALLOWED_IPS:-0.0.0.0/0}"', f'ALLOWED_IPS="{allowed_ips}"')
+    script = script.replace('SERVER_PRIVKEY="${SERVER_PRIVKEY:-}"', f'SERVER_PRIVKEY="{server_privkey}"')
+    script = script.replace('CLIENT_PUBKEY="${CLIENT_PUBKEY:-}"', f'CLIENT_PUBKEY="{client_pubkey}"')
     return script
 
 
@@ -142,7 +240,16 @@ def provision_vpn_instance(
     client = get_ec2_client(region)
     ami_id = get_latest_ubuntu_ami(client)
     sg_id = ensure_security_group(client)
-    user_data_script = generate_user_data(allowed_ips=allowed_ips)
+
+    # Generate genuine 32-byte Curve25519 keypairs for server & client
+    server_priv, server_pub = generate_wireguard_keypair()
+    client_priv, client_pub = generate_wireguard_keypair()
+
+    user_data_script = generate_user_data(
+        server_privkey=server_priv,
+        client_pubkey=client_pub,
+        port=DEFAULT_WIREGUARD_PORT,
+    )
 
     run_response = client.run_instances(
         ImageId=ami_id,
@@ -164,8 +271,25 @@ def provision_vpn_instance(
     )
 
     instance = run_response["Instances"][0]
+    instance_id = instance["InstanceId"]
+
+    # Store cryptographic session details securely on backend
+    save_session(
+        instance_id=instance_id,
+        data={
+            "instance_id": instance_id,
+            "region": region,
+            "instance_type": instance_type,
+            "allowed_ips": allowed_ips,
+            "client_private_key": client_priv,
+            "client_public_key": client_pub,
+            "server_public_key": server_pub,
+            "port": DEFAULT_WIREGUARD_PORT,
+        },
+    )
+
     return {
-        "instance_id": instance["InstanceId"],
+        "instance_id": instance_id,
         "region": region,
         "instance_type": instance_type,
         "state": instance["State"]["Name"],
@@ -174,7 +298,7 @@ def provision_vpn_instance(
 
 
 def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
-    """Query current status, public IP, and state of the VPN instance."""
+    """Query current status, public IP, and build WireGuard profile for the VPN instance."""
     client = get_ec2_client(region)
     response = client.describe_instances(InstanceIds=[instance_id])
     reservations = response.get("Reservations", [])
@@ -185,7 +309,7 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
     public_ip = inst.get("PublicIpAddress")
     state = inst.get("State", {}).get("Name", "unknown")
 
-    return {
+    result: Dict[str, Any] = {
         "instance_id": instance_id,
         "region": region,
         "state": state,
@@ -194,13 +318,34 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
         "launch_time": inst.get("LaunchTime").isoformat() if "LaunchTime" in inst else None,
     }
 
+    # If public IP is ready, assemble client config using stored keypair
+    if public_ip:
+        session = get_session(instance_id)
+        if session and session.get("client_private_key") and session.get("server_public_key"):
+            result["client_config"] = build_wireguard_client_config(
+                client_private_key=session["client_private_key"],
+                server_public_key=session["server_public_key"],
+                public_ip=public_ip,
+                allowed_ips=session.get("allowed_ips", "0.0.0.0/0"),
+                port=session.get("port", DEFAULT_WIREGUARD_PORT),
+            )
+        else:
+            result["client_config"] = (
+                "# Instance was provisioned before cryptographic keypair tracking was initialized.\n"
+                "# Please destroy this instance and spin up a new node to obtain a valid WireGuard profile."
+            )
+
+    return result
+
 
 def terminate_vpn_instance(region: str, instance_id: str) -> Dict[str, Any]:
-    """Terminate the ephemeral EC2 instance."""
+    """Terminate the ephemeral EC2 instance and delete session metadata."""
     client = get_ec2_client(region)
     term_res = client.terminate_instances(InstanceIds=[instance_id])
     state_updates = term_res.get("TerminatingInstances", [])
     current_state = state_updates[0]["CurrentState"]["Name"] if state_updates else "shutting-down"
+
+    delete_session(instance_id)
 
     return {
         "instance_id": instance_id,
