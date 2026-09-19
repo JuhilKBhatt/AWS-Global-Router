@@ -18,7 +18,6 @@ import {
   GlobalOutlined,
   HddOutlined,
   SwapOutlined,
-  SafetyOutlined,
   InfoCircleOutlined,
   SyncOutlined,
   DatabaseOutlined,
@@ -95,11 +94,6 @@ export const CostsView: React.FC = () => {
   const barWidth = 44;
   const numMonths = chartData.length;
   const stepX = graphWidth / numMonths;
-
-  // Persistent equivalent: 24/7 t3.micro ($7.50) + public IPv4 ($3.60) + 8GB gp3 ($0.80) = ~$11.90/mo
-  const persistentBaseline = 11.90;
-  const savingsAmount = Math.max(0, persistentBaseline - totalCurrent);
-  const savingsPct = Math.min(100, Math.max(0, Math.round(((persistentBaseline - totalCurrent) / persistentBaseline) * 100)));
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto' }}>

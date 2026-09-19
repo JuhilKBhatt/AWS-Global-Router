@@ -143,7 +143,8 @@ aws-global-router/
      ```bash
      docker compose -f docker-compose.prod.yml up -d --build
      ```
-     * Dashboard: [http://localhost](http://localhost)
+     * Dashboard & Reverse Proxy: [http://localhost](http://localhost) (or `http://localhost:<FRONTEND_PORT>`)
+     * *Note: The production Nginx container serves the frontend and reverse proxies `/api` directly to the backend over the internal Docker network (`router_net`). The backend is not exposed directly on host port 8000, preventing port collisions with other host services.*
 
 ---
 

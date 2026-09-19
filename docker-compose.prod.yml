@@ -7,8 +7,8 @@ services:
     restart: always
     env_file:
       - ./secrets/.prod.env
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     networks:
       - router_net
@@ -21,7 +21,7 @@ services:
     container_name: aws_global_router_frontend_prod
     restart: always
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       - backend
     networks:
