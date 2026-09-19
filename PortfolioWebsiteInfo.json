@@ -1,6 +1,6 @@
 {
  "title": "AWS Global Router",
- "description": "An ephemeral, on-demand multi-region WireGuard VPN orchestrator. Dynamically provisions disposable cloud gateways across global AWS regions with automated session self-teardown, split-tunnel routing, DynamoDB parameter storage, and real-time cost analytics.",
+ "description": "An ephemeral, on demand multi-region WireGuard VPN orchestrator. Dynamically provisions disposable cloud gateways across global AWS regions with automated session self teardown, split-tunnel routing, DynamoDB parameter storage and real-time cost analytics.",
  "language": ["Python", "FastAPI", "React", "TypeScript", "AWS EC2", "AWS DynamoDB", "WireGuard", "Docker", "Boto3", "Vite"],
  "liveDemo": "",
  "images": [
