@@ -176,10 +176,74 @@ aws-global-router/
 
 ---
 
-## 🛡 Security Notes
-* **No SSH Required:** The EC2 instances do not launch with SSH key pairs. Administrative access is omitted entirely to minimize attack surfaces.
-* **Ephemeral Ephemerality:** Since servers are constantly rebuilt from clean official Ubuntu AMIs, persistence threats are mitigated.
-* **Credential Isolation:** AWS API credentials remain strictly confined within the backend container environment and are never forwarded or exposed to the frontend browser bundle.
+## 🛡 Security & Privacy Architecture
+
+* **No SSH Required:** The EC2 instances do not launch with SSH key pairs. Administrative access is omitted entirely to eliminate attack surfaces.
+* **Ephemeral Ephemerality:** Servers are spun up on-demand from clean, official Canonical Ubuntu LTS AMIs and permanently deleted after use, eliminating persistence threats.
+* **Stealth Firewall:** The EC2 Security Group (`aws-global-router-wg-sg`) only allows UDP port 51820. WireGuard drops all unauthenticated packets silently, making the instance appear as an empty, unresponsive IP to port scanners.
+* **Credential Isolation:** AWS API credentials remain strictly confined within the backend container environment (`secrets/`) and are never forwarded or exposed to the frontend browser bundle.
+
+---
+
+## ❓ Frequently Asked Questions & Deep Dive
+
+### 1. How does the Session TTL work? If my backend goes down, will it still kill the EC2?
+
+**Yes, guaranteed.** The teardown does **not** rely on your local machine, Docker, or an internet connection staying active. It is enforced at the **AWS cloud hypervisor level** through two mechanisms:
+
+1. **Autonomous Linux Timer:** During initial bootstrap on AWS hardware, the cloud-init script schedules a native operating system shutdown:
+   ```bash
+   shutdown -h "+${TTL_MINUTES}" "AWS Global Router session TTL expired" &
+   ```
+2. **AWS Hypervisor Auto-Destroy:** When provisioning the EC2 node, Boto3 sets:
+   ```python
+   run_kwargs["InstanceInitiatedShutdownBehavior"] = "terminate"
+   ```
+When the countdown expires inside the Linux guest OS, AWS interprets the shutdown signal as an instruction to **permanently terminate and delete the instance**, releasing the public IPv4 and compute resources immediately.
+
+---
+
+### 2. What do destination websites, apps, and games see?
+
+Any website or service you connect to sees the **AWS cloud node**, completely masking your identity:
+
+| Attribute | Without VPN | With AWS Global Router |
+| :--- | :--- | :--- |
+| **Public IPv4** | Your real residential/mobile IP (e.g. `121.45.x.x`) | **The AWS Public IP** (e.g. `13.239.x.x`) |
+| **ISP / Organization** | Your local ISP (e.g., Telstra, Comcast, Rogers) | **Amazon.com, Inc. / AWS** |
+| **ASN (Autonomous System)** | Residential ASN | **AS16509 (Amazon.com)** |
+| **Geographic Location** | Your physical city & neighborhood | **The selected AWS region** (e.g., Osaka, Japan) |
+| **DNS Resolver** | Your ISP's default DNS | **Cloudflare Privacy DNS (`1.1.1.1`)** |
+
+*Note: If you are logged into a personal account on a website (e.g., Google or Discord), the service already has your profile information stored on their servers. The VPN masks your network routing and location, not your logged-in profile identity.*
+
+---
+
+### 3. What does my local Wi-Fi network admin or ISP see?
+
+Your local network administrator (hotel, airport, school, or home router) and your ISP see **only encrypted UDP noise** heading to an Amazon data center:
+
+* **What they CANNOT see (100% Encrypted):**
+  * Specific websites and full URLs visited.
+  * DNS domain lookup queries (DNS travels to `1.1.1.1` inside the tunnel).
+  * Page content, messages, search keywords, and passwords.
+  * App, gaming, or video streaming traffic.
+* **What they CAN see:**
+  * That your device is sending UDP packets on port 51820 to an Amazon AWS IP address.
+  * The total bandwidth consumed and connection timestamps.
+
+**What appears in their router firewall log:**
+```text
+[21:18:22] Source: 192.168.1.45:51820  ──►  Destination: 13.239.112.44:51820 (Amazon.com, Inc.)  [UDP / Encrypted]
+[21:18:23] Source: 192.168.1.45:51820  ──►  Destination: 13.239.112.44:51820 (Amazon.com, Inc.)  [UDP / Encrypted]
+```
+
+---
+
+### 4. How do regional age checks and SafeSearch work?
+
+* **Regional Age-Gate Laws:** Many jurisdictions enforce digital ID or credit card verification based on the incoming visitor's IP address. By routing through an AWS region that does not mandate these laws (e.g. Frankfurt, Germany or Oregon, US), services apply the policies of that AWS region, bypassing local IP-based age gates.
+* **SafeSearch & Network Filtering:** Many schools, workplaces, or ISPs force SafeSearch by intercepting unencrypted DNS queries. Because all DNS in your WireGuard profile resolves through **Cloudflare (`1.1.1.1`)** inside the encrypted tunnel, local network filters cannot intercept or force SafeSearch. You retain full control in your browser's search engine settings.
 
 ---
 
