@@ -153,27 +153,6 @@ export const CostsView: React.FC = () => {
       )}
 
       <Spin spinning={loading} tip="Querying DynamoDB cost metrics...">
-        {/* Highlights Banner */}
-        <Alert
-          message="Ephemeral Savings Active"
-          description={
-            <span>
-              By spinning up EC2 nodes on-demand rather than running a persistent 24/7 cloud VPN,
-              you have saved approximately <strong style={{ color: '#52c41a' }}>${savingsAmount.toFixed(2)}</strong> this
-              month (~{savingsPct}% cost reduction).
-            </span>
-          }
-          type="success"
-          showIcon
-          icon={<SafetyOutlined />}
-          style={{
-            marginBottom: 24,
-            background: '#0e2316',
-            border: '1px solid #194a28',
-            borderRadius: 10,
-          }}
-        />
-
         {/* KPI Cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={24} sm={12} lg={6}>
