@@ -1,0 +1,17 @@
+name: Auto Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Pull and Restart Docker
+        run: |
+          cd /mnt/faststorage/AWS-Global-Router/
+          git pull origin main
+          sudo docker compose -f docker-compose.prod.yml down
+          sudo docker compose -f docker-compose.prod.yml up -d --build
