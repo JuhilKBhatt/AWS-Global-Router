@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Typography, Button, Space, message, Tabs } from 'antd';
+import { Modal, Typography, Button, Space, message, Tabs, Grid } from 'antd';
 import { DownloadOutlined, CopyOutlined, QrcodeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -10,6 +10,7 @@ interface QRCodeModalProps {
   onClose: () => void;
   configText: string;
   region: string;
+  instanceId?: string;
 }
 
 export const QRCodeModal: React.FC<QRCodeModalProps> = ({
@@ -17,7 +18,9 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   onClose,
   configText,
   region,
+  instanceId,
 }) => {
+  const screens = Grid.useBreakpoint();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -32,14 +35,15 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   };
 
   const handleDownload = () => {
+    const fileName = instanceId ? `${instanceId}.conf` : `wg-aws-${region}.conf`;
     const element = document.createElement('a');
     const file = new Blob([configText], { type: 'text/plain;charset=utf-8' });
     element.href = URL.createObjectURL(file);
-    element.download = `wg-aws-${region}.conf`;
+    element.download = fileName;
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
-    message.success(`Downloaded wg-aws-${region}.conf`);
+    message.success(`Downloaded ${fileName}`);
   };
 
   return (
@@ -53,17 +57,17 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
         </Space>
       }
       footer={[
-        <Button key="copy" icon={<CopyOutlined />} onClick={handleCopy}>
+        <Button key="copy" icon={<CopyOutlined />} onClick={handleCopy} block={screens.xs}>
           {copied ? 'Copied!' : 'Copy Config'}
         </Button>,
-        <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={handleDownload}>
+        <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={handleDownload} block={screens.xs}>
           Download .conf
         </Button>,
       ]}
-      width={560}
+      width={screens.xs ? '92%' : 560}
       centered
     >
-      <Paragraph type="secondary">
+      <Paragraph type="secondary" style={{ fontSize: screens.xs ? 12 : 14 }}>
         Scan the QR code directly inside the official WireGuard mobile app (iOS/Android), or
         download the configuration profile for desktop clients (macOS/Windows/Linux).
       </Paragraph>
@@ -95,7 +99,11 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   }}
                 >
-                  <QRCodeSVG value={configText || 'WG_EMPTY_CONFIG'} size={240} level="M" />
+                  <QRCodeSVG
+                    value={configText || 'WG_EMPTY_CONFIG'}
+                    size={screens.xs ? 180 : 240}
+                    level="M"
+                  />
                 </div>
                 <Text type="secondary" style={{ marginTop: 12, fontSize: 13 }}>
                   Point your WireGuard camera scanner at the code above

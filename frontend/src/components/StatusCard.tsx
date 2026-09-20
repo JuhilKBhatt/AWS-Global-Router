@@ -9,6 +9,7 @@ import {
   Typography,
   Tabs,
   Badge,
+  Grid,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -44,6 +45,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
   onRefresh,
   isRefreshing,
 }) => {
+  const screens = Grid.useBreakpoint();
   const [activeTabKey, setActiveTabKey] = useState<string>('0');
 
   const getRegionName = (regionId: string) => {
@@ -181,17 +183,19 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             style={{ marginBottom: 16 }}
           >
             <Descriptions.Item label="Instance ID">
-              <code style={{ color: '#58a6ff' }}>{inst.instance_id}</code>
+              <code style={{ color: '#58a6ff', wordBreak: 'break-all' }}>{inst.instance_id}</code>
             </Descriptions.Item>
             <Descriptions.Item label="Status">
               {getStatusTag(inst.state)}
             </Descriptions.Item>
             <Descriptions.Item label="AWS Region">
-              <Tag color="blue">{getRegionName(inst.region)} ({inst.region})</Tag>
+              <Tag color="blue" style={{ wordBreak: 'break-word' }}>
+                {getRegionName(inst.region)} ({inst.region})
+              </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Public IPv4">
               {inst.public_ip ? (
-                <Text strong copyable style={{ color: '#7ee787' }}>
+                <Text strong copyable style={{ color: '#7ee787', wordBreak: 'break-all' }}>
                   {inst.public_ip}
                 </Text>
               ) : (
@@ -202,7 +206,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             </Descriptions.Item>
             <Descriptions.Item label="Session TTL">
               {inst.ttl_minutes && inst.ttl_minutes > 0 ? (
-                <Space size={4}>
+                <Space size={4} wrap>
                   <ClockCircleOutlined style={{ color: '#fa8c16' }} />
                   <Text style={{ color: '#fa8c16' }}>{inst.ttl_minutes} mins auto-teardown</Text>
                 </Space>
@@ -219,7 +223,15 @@ export const StatusCard: React.FC<StatusCardProps> = ({
           </Descriptions>
         </div>
 
-        <div style={{ marginTop: 12, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+        <div
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            gap: 10,
+            flexDirection: screens.xs ? 'column-reverse' : 'row',
+            justifyContent: 'flex-end',
+          }}
+        >
           <Popconfirm
             title="Terminate VPN Instance"
             description={`Destroy node ${inst.instance_id} in ${getRegionName(inst.region)}? Compute charges will cease immediately.`}
@@ -232,6 +244,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
               danger
               icon={<DeleteOutlined />}
               loading={isBeingDestroyed}
+              block={screens.xs}
               style={{ height: 42 }}
             >
               Destroy Node
@@ -243,12 +256,13 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             icon={<QrcodeOutlined />}
             onClick={() => onOpenQR(inst)}
             disabled={!isRunning}
+            block={screens.xs}
             style={{
               background: isRunning ? '#238636' : undefined,
               borderColor: isRunning ? '#2ea043' : undefined,
               height: 42,
               fontWeight: 600,
-              flex: 1,
+              flex: screens.xs ? undefined : 1,
             }}
           >
             {isRunning ? 'WireGuard Pairing' : 'Waiting for Boot...'}
@@ -261,9 +275,9 @@ export const StatusCard: React.FC<StatusCardProps> = ({
   return (
     <Card
       title={
-        <Space>
+        <Space size={6}>
           <CloudServerOutlined style={{ color: '#52c41a' }} />
-          <span>Active VPN Endpoints ({instances.length})</span>
+          <span>Active Endpoints ({instances.length})</span>
         </Space>
       }
       extra={
@@ -272,7 +286,7 @@ export const StatusCard: React.FC<StatusCardProps> = ({
           icon={<SyncOutlined spin={isRefreshing} />}
           onClick={onRefresh}
         >
-          Refresh All
+          {screens.xs ? 'Refresh' : 'Refresh All'}
         </Button>
       }
       bordered={false}

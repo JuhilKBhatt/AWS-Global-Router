@@ -11,6 +11,7 @@ import {
   Alert,
   Button,
   Spin,
+  Grid,
 } from 'antd';
 import {
   DollarCircleOutlined,
@@ -34,6 +35,7 @@ const CATEGORIES = [
 ] as const;
 
 export const CostsView: React.FC = () => {
+  const screens = Grid.useBreakpoint();
   const [costsData, setCostsData] = useState<CostsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
@@ -108,17 +110,25 @@ export const CostsView: React.FC = () => {
         }}
       >
         <div>
-          <Title level={2} style={{ color: '#f0f6fc', margin: 0, fontWeight: 600 }}>
+          <Title
+            level={screens.xs ? 3 : 2}
+            style={{
+              color: '#f0f6fc',
+              margin: 0,
+              fontWeight: 600,
+              fontSize: screens.xs ? 20 : 26,
+            }}
+          >
             <DollarCircleOutlined style={{ color: '#52c41a', marginRight: 10 }} />
             Cloud Cost & Resource Analytics
           </Title>
-          <Text type="secondary">
+          <Text type="secondary" style={{ fontSize: screens.xs ? 12 : 14 }}>
             DynamoDB-tracked spend across compute, public IP allocations, storage, and egress bandwidth.
           </Text>
         </div>
 
-        <Space>
-          <Tag icon={<DatabaseOutlined />} color="purple" style={{ padding: '4px 10px', fontSize: 12 }}>
+        <Space wrap size={[8, 8]}>
+          <Tag icon={<DatabaseOutlined />} color="purple" style={{ padding: '4px 10px', fontSize: 12, margin: 0 }}>
             DynamoDB Tracked
           </Tag>
           <Button
@@ -352,8 +362,10 @@ export const CostsView: React.FC = () => {
         <Card
           title={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <span>Historical Monthly Cost (DynamoDB Stacked Breakdown)</span>
-              <Space size="middle" wrap>
+              <span style={{ fontSize: screens.xs ? 13 : 15, fontWeight: 600 }}>
+                Historical Monthly Cost (DynamoDB Stacked Breakdown)
+              </span>
+              <Space size={screens.xs ? 'small' : 'middle'} wrap>
                 {CATEGORIES.map((c) => (
                   <Space key={c.key} size={4}>
                     <div
@@ -364,7 +376,7 @@ export const CostsView: React.FC = () => {
                         backgroundColor: c.color,
                       }}
                     />
-                    <Text style={{ fontSize: 12, color: '#8b949e' }}>{c.label}</Text>
+                    <Text style={{ fontSize: screens.xs ? 11 : 12, color: '#8b949e' }}>{c.label}</Text>
                   </Space>
                 ))}
               </Space>
@@ -373,10 +385,23 @@ export const CostsView: React.FC = () => {
           bordered={false}
           style={{ borderRadius: 12, background: '#161b22' }}
         >
-          <div style={{ width: '100%', overflowX: 'auto', position: 'relative' }}>
+          <div
+            style={{
+              width: '100%',
+              overflowX: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              position: 'relative',
+              paddingBottom: 8,
+            }}
+          >
             <svg
               viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-              style={{ width: '100%', height: 'auto', display: 'block' }}
+              style={{
+                width: '100%',
+                minWidth: 520,
+                height: 'auto',
+                display: 'block',
+              }}
             >
               {/* Grid Lines */}
               {[0, 0.25, 0.5, 0.75, 1.0].map((ratio) => {

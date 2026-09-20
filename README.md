@@ -160,7 +160,7 @@ aws-global-router/
    * The backend dynamically provisions an EC2 instance with an ephemeral security group (UDP 51820) and bootstraps WireGuard via `user-data` in ~60 seconds.
 3. **Connect Your Client:**
    * **Mobile (iOS / Android):** Open the WireGuard mobile app, tap `+` > **Create from QR code**, and scan the displayed pairing code.
-   * **Desktop (macOS / Windows / Linux):** Download the generated `wg-aws-<region>.conf` file and import it into your desktop WireGuard client.
+   * **Desktop (macOS / Windows / Linux):** Download the generated `<instance_id>.conf` file and import it into your desktop WireGuard client.
    * Activate the tunnel in your WireGuard app to start routing traffic.
 4. **Instant Teardown:**
    * When your browsing or testing session is complete, click **Destroy VPN** on the active endpoint card.

@@ -7,10 +7,13 @@ import {
   Col,
   message,
   Tag,
+  Button,
+  Grid,
 } from 'antd';
 import {
   SafetyCertificateOutlined,
   ThunderboltOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import {
   fetchRegions,
@@ -35,8 +38,10 @@ const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
 export const App: React.FC = () => {
+  const screens = Grid.useBreakpoint();
   const [currentTab, setCurrentTab] = useState<PageKey>('home');
   const [collapsed, setCollapsed] = useState<boolean>(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState<boolean>(false);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   const [regions, setRegions] = useState<Region[]>([]);
@@ -149,12 +154,14 @@ export const App: React.FC = () => {
 
   return (
     <Layout style={{ minHeight: '100vh', background: '#090d13' }}>
-      {/* Side Navigation Bar */}
+      {/* Side Navigation Bar (Collapsible Sider on Desktop, Slide-in Drawer on Mobile) */}
       <SideNavBar
         currentKey={currentTab}
         onSelectKey={(k) => setCurrentTab(k)}
         collapsed={collapsed}
         onCollapse={(c) => setCollapsed(c)}
+        mobileOpen={mobileDrawerOpen}
+        onMobileClose={() => setMobileDrawerOpen(false)}
       />
 
       <Layout style={{ background: 'transparent', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -166,33 +173,70 @@ export const App: React.FC = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '0 28px',
+            padding: screens.xs ? '0 12px' : '0 24px',
             height: 64,
           }}
         >
-          <Space direction="horizontal" size="middle">
-            <SafetyCertificateOutlined style={{ fontSize: 22, color: '#1677ff' }} />
-            <Title level={4} style={{ margin: 0, color: '#f0f6fc', fontWeight: 600 }}>
-              {currentTab === 'home' && 'AWS Global Router'}
-              {currentTab === 'costs' && 'Cost & Spending Intelligence'}
-              {currentTab === 'settings' && 'Platform Settings'}
+          <Space direction="horizontal" size="small" align="center">
+            {/* Mobile Hamburger Drawer Trigger */}
+            {!screens.lg && (
+              <Button
+                type="text"
+                icon={<MenuOutlined style={{ fontSize: 20, color: '#f0f6fc' }} />}
+                onClick={() => setMobileDrawerOpen(true)}
+                style={{ padding: '4px 8px', marginRight: 2 }}
+                aria-label="Toggle Navigation Menu"
+              />
+            )}
+            <SafetyCertificateOutlined style={{ fontSize: 20, color: '#1677ff' }} />
+            <Title
+              level={4}
+              style={{
+                margin: 0,
+                color: '#f0f6fc',
+                fontWeight: 600,
+                fontSize: screens.xs ? 15 : 18,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {currentTab === 'home' && (screens.xs ? 'AWS Router' : 'AWS Global Router')}
+              {currentTab === 'costs' && (screens.xs ? 'Costs & Spending' : 'Cost & Spending Intelligence')}
+              {currentTab === 'settings' && (screens.xs ? 'Settings' : 'Platform Settings')}
             </Title>
           </Space>
 
-          <Space direction="horizontal" size="middle">
+          <Space direction="horizontal" size="middle" align="center">
             {runningCount > 0 ? (
-              <Tag color="success" icon={<ThunderboltOutlined />}>
-                {runningCount} TUNNEL{runningCount > 1 ? 'S' : ''} ACTIVE
+              <Tag color="success" icon={<ThunderboltOutlined />} style={{ margin: 0 }}>
+                {screens.xs ? `${runningCount} ACTIVE` : `${runningCount} TUNNEL${runningCount > 1 ? 'S' : ''} ACTIVE`}
               </Tag>
             ) : (
-              <Tag color="default">STANDBY (0 RUNNING)</Tag>
+              <Tag color="default" style={{ margin: 0 }}>
+                {screens.xs ? 'STANDBY' : 'STANDBY (0 RUNNING)'}
+              </Tag>
             )}
-            <Text style={{ color: '#8b949e', fontSize: 13 }}>Ephemeral WireGuard Orchestrator</Text>
+            <Text
+              style={{
+                color: '#8b949e',
+                fontSize: 13,
+                display: screens.md ? 'inline' : 'none',
+              }}
+            >
+              Ephemeral WireGuard Orchestrator
+            </Text>
           </Space>
         </Header>
 
         {/* Content Area */}
-        <Content style={{ padding: '32px 28px', maxWidth: 1200, margin: '0 auto', width: '100%', flex: 1 }}>
+        <Content
+          style={{
+            padding: screens.xs ? '16px 12px' : '32px 28px',
+            maxWidth: 1200,
+            margin: '0 auto',
+            width: '100%',
+            flex: 1,
+          }}
+        >
           {currentTab === 'home' && (
             <>
               {/* Two side-by-side columns: Left is Create VPN, Right is Active VPNs */}
@@ -229,6 +273,7 @@ export const App: React.FC = () => {
                   onClose={() => setSelectedQrInstance(null)}
                   configText={selectedQrInstance.client_config || 'Bootstrapping client configuration...'}
                   region={selectedQrInstance.region}
+                  instanceId={selectedQrInstance.instance_id}
                 />
               )}
             </>

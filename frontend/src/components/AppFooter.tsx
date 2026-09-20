@@ -1,17 +1,19 @@
 import React from 'react';
-import { Layout, Typography, Space, Divider, Tag } from 'antd';
+import { Layout, Typography, Space, Divider, Tag, Grid } from 'antd';
 import { GithubOutlined, SafetyCertificateOutlined, FileProtectOutlined } from '@ant-design/icons';
 
 const { Footer } = Layout;
 const { Text, Link } = Typography;
 
 export const AppFooter: React.FC = () => {
+  const screens = Grid.useBreakpoint();
+
   return (
     <Footer
       style={{
         background: '#0d1117',
         borderTop: '1px solid #21262d',
-        padding: '24px 32px',
+        padding: screens.xs ? '20px 16px' : '24px 32px',
         color: '#8b949e',
         marginTop: 'auto',
       }}
@@ -23,11 +25,18 @@ export const AppFooter: React.FC = () => {
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: screens.xs ? 'center' : 'space-between',
           gap: 16,
+          textAlign: screens.xs ? 'center' : 'left',
         }}
       >
-        <Space direction="horizontal" size="middle" align="center">
+        <Space
+          direction="horizontal"
+          size="middle"
+          align="center"
+          wrap
+          style={{ justifyContent: screens.xs ? 'center' : 'flex-start' }}
+        >
           <SafetyCertificateOutlined style={{ color: '#1677ff', fontSize: 18 }} />
           <Text strong style={{ color: '#c9d1d9', fontSize: 14 }}>
             AWS Global Router
@@ -37,7 +46,13 @@ export const AppFooter: React.FC = () => {
           </Text>
         </Space>
 
-        <Space direction="horizontal" size="middle" split={<Divider type="vertical" style={{ borderColor: '#30363d' }} />}>
+        <Space
+          direction="horizontal"
+          size="middle"
+          wrap
+          style={{ justifyContent: screens.xs ? 'center' : 'flex-end' }}
+          split={screens.xs ? undefined : <Divider type="vertical" style={{ borderColor: '#30363d' }} />}
+        >
           <Link
             href="https://github.com/JuhilKBhatt/AWS-Global-Router"
             target="_blank"

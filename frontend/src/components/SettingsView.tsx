@@ -16,6 +16,7 @@ import {
   Tag,
   Spin,
   Alert,
+  Grid,
 } from 'antd';
 import {
   SettingOutlined,
@@ -53,6 +54,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsSaved }) => {
+  const screens = Grid.useBreakpoint();
   const [form] = Form.useForm<AppSettings>();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -128,21 +130,29 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
     <div style={{ maxWidth: 880, margin: '0 auto' }}>
       <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <Title level={2} style={{ color: '#f0f6fc', margin: 0, fontWeight: 600 }}>
+          <Title
+            level={screens.xs ? 3 : 2}
+            style={{
+              color: '#f0f6fc',
+              margin: 0,
+              fontWeight: 600,
+              fontSize: screens.xs ? 20 : 26,
+            }}
+          >
             <SettingOutlined style={{ color: '#fa8c16', marginRight: 10 }} />
             System Preferences & Automation
           </Title>
-          <Text type="secondary">
+          <Text type="secondary" style={{ fontSize: screens.xs ? 12 : 14 }}>
             Configure idle session auto-teardown, spending budgets, and deployment defaults.
           </Text>
         </div>
 
-        <Space>
-          <Tag icon={<DatabaseOutlined />} color="purple" style={{ padding: '4px 10px', fontSize: 12 }}>
+        <Space wrap size={[8, 8]}>
+          <Tag icon={<DatabaseOutlined />} color="purple" style={{ padding: '4px 10px', fontSize: 12, margin: 0 }}>
             DynamoDB: <code>aws_global_router_parameters</code>
           </Tag>
           {lastSyncTime && (
-            <Tag icon={<CheckCircleOutlined />} color="success" style={{ padding: '4px 10px', fontSize: 12 }}>
+            <Tag icon={<CheckCircleOutlined />} color="success" style={{ padding: '4px 10px', fontSize: 12, margin: 0 }}>
               Synced {lastSyncTime}
             </Tag>
           )}
@@ -198,14 +208,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
                     min={15}
                     max={240}
                     step={15}
-                    marks={{
-                      15: '15m',
-                      30: '30m',
-                      60: '1h (Recommended)',
-                      120: '2h',
-                      180: '3h',
-                      240: '4h',
-                    }}
+                    marks={
+                      screens.xs
+                        ? {
+                            15: '15m',
+                            30: '30m',
+                            60: '1h',
+                            120: '2h',
+                            180: '3h',
+                            240: '4h',
+                          }
+                        : {
+                            15: '15m',
+                            30: '30m',
+                            60: '1h (Recommended)',
+                            120: '2h',
+                            180: '3h',
+                            240: '4h',
+                          }
+                    }
                   />
                 </Form.Item>
               </Card>
@@ -318,8 +339,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
             </Col>
           </Row>
 
-          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-            <Button icon={<UndoOutlined />} onClick={handleReset} size="large" disabled={saving}>
+          <div
+            style={{
+              marginTop: 24,
+              display: 'flex',
+              flexDirection: screens.xs ? 'column-reverse' : 'row',
+              justifyContent: 'flex-end',
+              gap: 12,
+            }}
+          >
+            <Button
+              icon={<UndoOutlined />}
+              onClick={handleReset}
+              size="large"
+              disabled={saving}
+              block={screens.xs}
+            >
               Reset Defaults
             </Button>
             <Button
@@ -328,7 +363,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
               htmlType="submit"
               size="large"
               loading={saving}
-              style={{ minWidth: 160, fontWeight: 600 }}
+              block={screens.xs}
+              style={{ minWidth: screens.xs ? undefined : 160, fontWeight: 600 }}
             >
               Save to DynamoDB
             </Button>
