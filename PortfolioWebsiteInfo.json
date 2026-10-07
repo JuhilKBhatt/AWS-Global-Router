@@ -1,16 +1,48 @@
 {
- "title": "AWS Global Router",
- "description": "An ephemeral, on demand multi-region WireGuard VPN orchestrator. Dynamically provisions disposable cloud gateways across global AWS regions with automated session self teardown, split-tunnel routing, DynamoDB parameter storage and real-time cost analytics.",
- "language": ["Python", "FastAPI", "React", "TypeScript", "AWS EC2", "AWS DynamoDB", "WireGuard", "Docker", "Boto3", "Vite"],
- "liveDemo": "",
- "images": [
-   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817560/AWS-Global-Router-img-1_cor1uh.png",
-   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817558/AWS-Global-Router-img-2_rlydr0.png",
-   "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817559/AWS-Global-Router-img-3_vkxant.png"
- ],
- "videoDemo": "https://res.cloudinary.com/dmj4ggkjq/video/upload/v1789817555/AWS-Global-Router-video_nf1ewi.mov",
- "Priority": 1,
- "type": "Solo",
- "version": "Prod",
- "Visibilty": true
+  "title": "AWS Global Router",
+  "description": "An ephemeral, on demand multi-region WireGuard VPN orchestrator. Dynamically provisions disposable cloud gateways across global AWS regions with automated session self teardown, split-tunnel routing, DynamoDB parameter storage and real-time cost analytics.",
+  "techStack": {
+    "Frontend": [
+      "React",
+      "TypeScript",
+      "Vite",
+      "Ant Design"
+    ],
+    "Backend": [
+      "Python",
+      "Boto3",
+      "WireGuard",
+      "AWS DynamoDB"
+    ],
+    "AI": [],
+    "DevSecOps": [
+      "AWS",
+      "Docker",
+      "Cloudflare Zero Trust",
+      "GitHub Actions"
+    ],
+    "Test Automation": [
+      "Pytest"
+    ]
+  },
+  "liveDemo": "",
+  "images": [
+    "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817560/AWS-Global-Router-img-1_cor1uh.png",
+    "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817558/AWS-Global-Router-img-2_rlydr0.png",
+    "https://res.cloudinary.com/dmj4ggkjq/image/upload/v1789817559/AWS-Global-Router-img-3_vkxant.png"
+  ],
+  "videoDemo": "https://res.cloudinary.com/dmj4ggkjq/video/upload/v1789817555/AWS-Global-Router-video_nf1ewi.mov",
+  "Priority": 1,
+  "category": "Web App",
+  "type": "Solo",
+  "version": "Prod",
+  "versionNumber": "1.0.0",
+  "Highlights": [
+    "On-demand global WireGuard gateway orchestration across AWS regions via automated EC2 UserData bootstrapping",
+    "Ephemeral instance lifecycle with automated idle TTL self-teardown to minimize compute and IPv4 charges",
+    "Cloud-persisted configuration and real-time multi-month cost analytics powered by AWS DynamoDB",
+    "Custom split-tunnel traffic routing with scannable QR code generation for instant mobile and desktop pairing",
+    "Zero-trust ingress architecture integrating Cloudflare Access tunnels with hardened single-port UDP security groups"
+  ],
+  "Visibilty": true
 }
