@@ -36,11 +36,14 @@
   "category": "Web App",
   "type": "Solo",
   "version": "Prod",
-  "versionNumber": "1.0.0",
+  "versionNumber": "1.2.0",
   "Highlights": [
     "On-demand global WireGuard gateway orchestration across AWS regions via automated EC2 UserData bootstrapping",
-    "Ephemeral instance lifecycle with automated idle TTL self-teardown to minimize compute and IPv4 charges",
-    "Cloud-persisted configuration and real-time multi-month cost analytics powered by AWS DynamoDB",
+    "Multi-device mesh networking supporting up to 5 concurrent client keypairs per node (10.8.0.2 - 10.8.0.6) with interactive device management",
+    "Warm Standby (Sleep/Resume) lifecycle eliminating compute and public IPv4 charges while enabling rapid ~10s gateway resumption",
+    "Anonymous Dynamic DNS (DuckDNS) integration ensuring persistent client configs and hidden infrastructure footprint",
+    "Hardened REST control plane secured with API key authentication (X-API-Key) protecting mutating endpoints",
+    "Cloud-persisted configuration and real-time cost intelligence powered by AWS DynamoDB",
     "Custom split-tunnel traffic routing with scannable QR code generation for instant mobile and desktop pairing",
     "Zero-trust ingress architecture integrating Cloudflare Access tunnels with hardened single-port UDP security groups"
   ],

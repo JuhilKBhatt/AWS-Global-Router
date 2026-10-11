@@ -163,19 +163,27 @@ def build_wireguard_client_config(
     public_ip: str,
     allowed_ips: str = "0.0.0.0/0",
     port: int = DEFAULT_WIREGUARD_PORT,
+    endpoint_host: Optional[str] = None,
+    client_ip: str = "10.8.0.2/24",
 ) -> str:
     """Construct a valid WireGuard client .conf file with real base64 Curve25519 keys."""
+    endpoint_target = endpoint_host.strip() if endpoint_host and endpoint_host.strip() else public_ip
+    ip_addr = client_ip.replace("/32", "/24") if client_ip else "10.8.0.2/24"
+    if "/" not in ip_addr:
+        ip_addr = f"{ip_addr}/24"
+
     return f"""[Interface]
 PrivateKey = {client_private_key}
-Address = 10.8.0.2/24
+Address = {ip_addr}
 DNS = 1.1.1.1, 1.0.0.1
 
 [Peer]
 PublicKey = {server_public_key}
-Endpoint = {public_ip}:{port}
+Endpoint = {endpoint_target}:{port}
 AllowedIPs = {allowed_ips}
 PersistentKeepalive = 25
 """
+
 
 
 def get_ec2_client(region_name: str) -> boto3.client:
@@ -285,13 +293,13 @@ def ensure_security_group(client: Any, port: int = DEFAULT_WIREGUARD_PORT) -> st
     return sg_id
 
 
-def generate_user_data(
+def generate_multi_peer_user_data(
     server_privkey: str,
-    client_pubkey: str,
+    devices: List[Dict[str, Any]],
     port: int = DEFAULT_WIREGUARD_PORT,
-    ttl_minutes: int = 60,
+    ttl_minutes: int = 0,
 ) -> str:
-    """Render bootstrap user-data script from template with injected keypair and TTL."""
+    """Render bootstrap user-data script from template with injected keypairs and TTL."""
     template_path = Path(__file__).parent / "wireguard_template.sh"
     if not template_path.exists():
         raise FileNotFoundError(f"Template script missing at {template_path}")
@@ -299,28 +307,70 @@ def generate_user_data(
     script = template_path.read_text(encoding="utf-8")
     script = script.replace('SERVER_PORT="${SERVER_PORT:-51820}"', f'SERVER_PORT="{port}"')
     script = script.replace('SERVER_PRIVKEY="${SERVER_PRIVKEY:-}"', f'SERVER_PRIVKEY="{server_privkey}"')
-    script = script.replace('CLIENT_PUBKEY="${CLIENT_PUBKEY:-}"', f'CLIENT_PUBKEY="{client_pubkey}"')
     script = script.replace('TTL_MINUTES="${TTL_MINUTES:-60}"', f'TTL_MINUTES="{ttl_minutes}"')
+
+    peer_blocks: List[str] = []
+    for dev in devices:
+        pub = dev.get("public_key")
+        raw_ip = dev.get("ip", "10.8.0.2")
+        allowed_ip = f"{raw_ip.split('/')[0]}/32"
+        if pub:
+            peer_blocks.append(f"[Peer]\nPublicKey = {pub}\nAllowedIPs = {allowed_ip}")
+
+    rendered_peers = "\n\n".join(peer_blocks) if peer_blocks else "[Peer]\nPublicKey = \nAllowedIPs = 10.8.0.2/32"
+
+    target_block = """[Peer]
+PublicKey = ${CLIENT_PUBKEY}
+AllowedIPs = ${CLIENT_NET}"""
+
+    if target_block in script:
+        script = script.replace(target_block, rendered_peers)
+    else:
+        # Fallback if single placeholder exists
+        script = script.replace('CLIENT_PUBKEY="${CLIENT_PUBKEY:-}"', f'CLIENT_PUBKEY="{devices[0].get("public_key") if devices else ""}"')
+
     return script
+
+
+def generate_user_data(
+    server_privkey: str,
+    client_pubkey: str,
+    port: int = DEFAULT_WIREGUARD_PORT,
+    ttl_minutes: int = 0,
+) -> str:
+    """Render bootstrap user-data script from template with injected keypair and TTL."""
+    return generate_multi_peer_user_data(
+        server_privkey=server_privkey,
+        devices=[{"public_key": client_pubkey, "ip": "10.8.0.2/32"}],
+        port=port,
+        ttl_minutes=ttl_minutes,
+    )
+
 
 
 def provision_vpn_instance(
     region: str,
     instance_type: str = "t3.micro",
     allowed_ips: str = "0.0.0.0/0",
-    ttl_minutes: int = 60,
+    ttl_minutes: int = 0,
 ) -> Dict[str, Any]:
     """Provision a new ephemeral EC2 instance configured with WireGuard and automated TTL."""
     client = get_ec2_client(region)
     ami_id = get_latest_ubuntu_ami(client)
     sg_id = ensure_security_group(client)
 
-    server_priv, server_pub = generate_wireguard_keypair()
-    client_priv, client_pub = generate_wireguard_keypair()
+    from core.dynamodb import get_or_create_region_peers
+    peers_doc = get_or_create_region_peers(region)
+    server_priv = peers_doc["server"]["private_key"]
+    server_pub = peers_doc["server"]["public_key"]
+    devices = peers_doc.get("devices", [])
+    primary_device = devices[0] if devices else {"private_key": "", "public_key": ""}
+    client_priv = primary_device.get("private_key", "")
+    client_pub = primary_device.get("public_key", "")
 
-    user_data_script = generate_user_data(
+    user_data_script = generate_multi_peer_user_data(
         server_privkey=server_priv,
-        client_pubkey=client_pub,
+        devices=devices,
         port=DEFAULT_WIREGUARD_PORT,
         ttl_minutes=ttl_minutes,
     )
@@ -336,7 +386,7 @@ def provision_vpn_instance(
             {
                 "ResourceType": "instance",
                 "Tags": [
-                    {"Key": "Name", "Value": "aws-global-router-vpn-node"},
+                    {"Key": "Name", "Value": f"aws-global-router-{region}"},
                     {"Key": "ManagedBy", "Value": "aws-global-router"},
                     {"Key": "Region", "Value": region},
                     {"Key": "TTL", "Value": str(ttl_minutes)},
@@ -345,14 +395,22 @@ def provision_vpn_instance(
         ],
     }
 
-    # Automatically terminate instance when shutdown is invoked by the TTL script
+    # For Warm Standby, shutdown behavior is "stop" so instance can be paused/resumed
     if ttl_minutes > 0:
         run_kwargs["InstanceInitiatedShutdownBehavior"] = "terminate"
+    else:
+        run_kwargs["InstanceInitiatedShutdownBehavior"] = "stop"
 
     run_response = client.run_instances(**run_kwargs)
 
     instance = run_response["Instances"][0]
     instance_id = instance["InstanceId"]
+
+    endpoint_host = peers_doc["server"].get("endpoint_host", "")
+    if not endpoint_host and os.getenv("DUCKDNS_DOMAIN"):
+        raw_dom = os.getenv("DUCKDNS_DOMAIN", "").strip()
+        duck_dom = raw_dom[:-len(".duckdns.org")] if raw_dom.endswith(".duckdns.org") else raw_dom
+        endpoint_host = f"{duck_dom}.duckdns.org"
 
     save_session(
         instance_id=instance_id,
@@ -366,6 +424,8 @@ def provision_vpn_instance(
             "client_public_key": client_pub,
             "server_public_key": server_pub,
             "port": DEFAULT_WIREGUARD_PORT,
+            "devices": devices,
+            "endpoint_host": endpoint_host,
         },
     )
 
@@ -403,6 +463,15 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
     }
 
     if public_ip:
+        from core.duckdns import sync_duckdns_ip
+        sync_duckdns_ip(public_ip)
+
+        endpoint_host = session.get("endpoint_host") if session else None
+        if not endpoint_host and os.getenv("DUCKDNS_DOMAIN"):
+            raw_dom = os.getenv("DUCKDNS_DOMAIN", "").strip()
+            duck_dom = raw_dom[:-len(".duckdns.org")] if raw_dom.endswith(".duckdns.org") else raw_dom
+            endpoint_host = f"{duck_dom}.duckdns.org"
+
         if session and session.get("client_private_key") and session.get("server_public_key"):
             result["client_config"] = build_wireguard_client_config(
                 client_private_key=session["client_private_key"],
@@ -410,12 +479,42 @@ def get_instance_status(region: str, instance_id: str) -> Dict[str, Any]:
                 public_ip=public_ip,
                 allowed_ips=session.get("allowed_ips", "0.0.0.0/0"),
                 port=session.get("port", DEFAULT_WIREGUARD_PORT),
+                endpoint_host=endpoint_host,
             )
-        else:
-            result["client_config"] = (
-                "# Instance was provisioned before cryptographic keypair tracking was initialized.\n"
-                "# Please destroy this instance and spin up a new node to obtain a valid WireGuard profile."
-            )
+
+        from core.dynamodb import get_or_create_region_peers
+        peers_doc = get_or_create_region_peers(region)
+        devices_list = peers_doc.get("devices", [])
+        server_pub = session.get("server_public_key") if session else peers_doc["server"]["public_key"]
+
+        devices_with_configs = []
+        for dev in devices_list:
+            dev_priv = dev.get("private_key", "")
+            if dev_priv:
+                cfg = build_wireguard_client_config(
+                    client_private_key=dev_priv,
+                    server_public_key=server_pub,
+                    public_ip=public_ip,
+                    endpoint_host=endpoint_host,
+                    client_ip=dev.get("ip", "10.8.0.2"),
+                    allowed_ips=session.get("allowed_ips", "0.0.0.0/0") if session else "0.0.0.0/0",
+                    port=session.get("port", DEFAULT_WIREGUARD_PORT) if session else DEFAULT_WIREGUARD_PORT,
+                )
+                devices_with_configs.append({
+                    "id": dev["id"],
+                    "name": dev["name"],
+                    "ip": dev.get("ip"),
+                    "slot": dev.get("slot"),
+                    "client_config": cfg,
+                })
+        result["devices"] = devices_with_configs
+    else:
+        from core.dynamodb import get_or_create_region_peers
+        peers_doc = get_or_create_region_peers(region)
+        result["devices"] = [
+            {"id": d["id"], "name": d["name"], "ip": d.get("ip"), "slot": d.get("slot")}
+            for d in peers_doc.get("devices", [])
+        ]
 
     return result
 
@@ -471,3 +570,154 @@ def terminate_vpn_instance(region: str, instance_id: str) -> Dict[str, Any]:
         "state": current_state,
         "message": f"Instance {instance_id} termination initiated.",
     }
+
+
+def start_vpn_instance(region: str, instance_id: Optional[str] = None) -> Dict[str, Any]:
+    """Start or resume a stopped VPN EC2 instance (Warm Standby)."""
+    sessions = load_sessions()
+    target_id = instance_id
+    if not target_id:
+        for i_id, sess in sessions.items():
+            if sess.get("region") == region:
+                target_id = i_id
+                break
+
+    if not target_id:
+        # If no instance exists for this region, provision a new one
+        return provision_vpn_instance(region=region)
+
+    client = get_ec2_client(region)
+
+    # Inspect current instance state before starting
+    try:
+        st = client.describe_instances(InstanceIds=[target_id])
+        resv = st.get("Reservations", [])
+        current_state = "unknown"
+        if resv and resv[0].get("Instances"):
+            current_state = resv[0]["Instances"][0].get("State", {}).get("Name", "unknown")
+    except Exception as desc_err:
+        logger.warning("Could not describe instance %s before starting: %s", target_id, desc_err)
+        current_state = "unknown"
+
+    if current_state == "running":
+        logger.info("Instance %s is already running.", target_id)
+        return get_instance_status(region, target_id)
+
+    # If instance is currently stopping, wait for it to enter 'stopped' before start
+    if current_state == "stopping":
+        logger.info("Instance %s is currently stopping. Waiting for it to enter 'stopped' state...", target_id)
+        try:
+            waiter = client.get_waiter("instance_stopped")
+            waiter.wait(
+                InstanceIds=[target_id],
+                WaiterConfig={"Delay": 2, "MaxAttempts": 25},
+            )
+        except Exception as wait_err:
+            logger.warning("instance_stopped waiter timed out or failed: %s", wait_err)
+
+    try:
+        client.start_instances(InstanceIds=[target_id])
+    except ClientError as exc:
+        err_code = exc.response.get("Error", {}).get("Code", "")
+        if err_code == "IncorrectInstanceState":
+            logger.info("Instance %s not yet ready (IncorrectInstanceState); waiting for stopped state...", target_id)
+            try:
+                waiter = client.get_waiter("instance_stopped")
+                waiter.wait(
+                    InstanceIds=[target_id],
+                    WaiterConfig={"Delay": 2, "MaxAttempts": 20},
+                )
+                client.start_instances(InstanceIds=[target_id])
+            except Exception as retry_err:
+                logger.error("Retry start_instances failed for %s: %s", target_id, retry_err)
+                raise
+        else:
+            logger.error("Failed to start instance %s: %s", target_id, exc)
+            raise
+    except Exception as exc:
+        logger.error("Failed to start instance %s: %s", target_id, exc)
+        raise
+
+    import time
+    public_ip = None
+    for _ in range(20):
+        time.sleep(1)
+        try:
+            st = client.describe_instances(InstanceIds=[target_id])
+            resv = st.get("Reservations", [])
+            if resv and resv[0].get("Instances"):
+                inst = resv[0]["Instances"][0]
+                public_ip = inst.get("PublicIpAddress")
+                state = inst.get("State", {}).get("Name")
+                if public_ip and state == "running":
+                    break
+        except Exception:
+            pass
+
+    if public_ip:
+        from core.duckdns import sync_duckdns_ip
+        sync_duckdns_ip(public_ip)
+
+    return get_instance_status(region, target_id)
+
+
+def stop_vpn_instance(region: str, instance_id: Optional[str] = None) -> Dict[str, Any]:
+    """Pause/stop an active VPN EC2 instance (Warm Standby)."""
+    sessions = load_sessions()
+    target_id = instance_id
+    if not target_id:
+        for i_id, sess in sessions.items():
+            if sess.get("region") == region:
+                target_id = i_id
+                break
+
+    if not target_id:
+        raise ValueError(f"No active or recorded instance found in region {region}")
+
+    client = get_ec2_client(region)
+    try:
+        client.stop_instances(InstanceIds=[target_id])
+    except Exception as exc:
+        logger.error("Failed to stop instance %s: %s", target_id, exc)
+        raise
+
+    # Calculate elapsed duration and record usage into DynamoDB
+    sess = get_session(target_id)
+    if sess and sess.get("launch_time"):
+        try:
+            import datetime
+            launch_dt = datetime.datetime.fromisoformat(sess["launch_time"])
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+            duration_hrs = max((now_dt - launch_dt).total_seconds() / 3600.0, 0.05)
+            from core.dynamodb import record_usage_cost
+            record_usage_cost(instance_id=target_id, elapsed_hours=duration_hrs, region=region)
+        except Exception as err:
+            logger.warning("Could not record session cost on stop: %s", err)
+
+    return {
+        "instance_id": target_id,
+        "region": region,
+        "state": "stopping",
+        "message": f"Instance {target_id} paused/put to sleep successfully.",
+    }
+
+
+def quick_toggle_vpn_instance(region: str) -> Dict[str, Any]:
+    """Toggle between Start (Resume) and Stop (Pause) for the given region."""
+    sessions = load_sessions()
+    target_id = None
+    for i_id, sess in sessions.items():
+        if sess.get("region") == region:
+            target_id = i_id
+            break
+
+    if not target_id:
+        return start_vpn_instance(region)
+
+    st = get_instance_status(region, target_id)
+    current_state = st.get("state", "unknown")
+    if current_state in ["running", "pending"]:
+        return stop_vpn_instance(region, target_id)
+    else:
+        return start_vpn_instance(region, target_id)
+

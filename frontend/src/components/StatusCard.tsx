@@ -20,7 +20,8 @@ import {
   CloudServerOutlined,
   SafetyCertificateOutlined,
   ThunderboltOutlined,
-  ClockCircleOutlined,
+  PlayCircleOutlined,
+  PauseCircleOutlined,
 } from '@ant-design/icons';
 import { InstanceResponse, Region } from '../api/vpnClient';
 
@@ -32,6 +33,10 @@ interface StatusCardProps {
   onOpenQR: (instance: InstanceResponse) => void;
   onDestroy: (instance: InstanceResponse) => void;
   destroyingId?: string | null;
+  onStart?: (instance: InstanceResponse) => void;
+  startingId?: string | null;
+  onStop?: (instance: InstanceResponse) => void;
+  stoppingId?: string | null;
   onRefresh: () => void;
   isRefreshing: boolean;
 }
@@ -42,9 +47,14 @@ export const StatusCard: React.FC<StatusCardProps> = ({
   onOpenQR,
   onDestroy,
   destroyingId,
+  onStart,
+  startingId,
+  onStop,
+  stoppingId,
   onRefresh,
   isRefreshing,
 }) => {
+
   const screens = Grid.useBreakpoint();
   const [activeTabKey, setActiveTabKey] = useState<string>('0');
 
@@ -157,6 +167,18 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             BOOTSTRAPPING
           </Tag>
         );
+      case 'stopped':
+        return (
+          <Tag icon={<PauseCircleOutlined />} color="warning">
+            STANDBY (PAUSED)
+          </Tag>
+        );
+      case 'stopping':
+        return (
+          <Tag icon={<SyncOutlined spin />} color="warning">
+            PAUSING
+          </Tag>
+        );
       case 'shutting-down':
       case 'terminated':
         return (
@@ -171,6 +193,8 @@ export const StatusCard: React.FC<StatusCardProps> = ({
 
   const renderInstanceDetails = (inst: InstanceResponse) => {
     const isRunning = inst.state.toLowerCase() === 'running';
+    const isStopped = inst.state.toLowerCase() === 'stopped';
+    const isStopping = inst.state.toLowerCase() === 'stopping';
     const isBeingDestroyed = destroyingId === inst.instance_id;
 
     return (
@@ -183,15 +207,17 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             style={{ marginBottom: 16 }}
           >
             <Descriptions.Item label="Instance ID">
-              <code style={{ color: '#58a6ff', wordBreak: 'break-all' }}>{inst.instance_id}</code>
+              <Space wrap size={6}>
+                <Tag color="blue" style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>
+                  {getRegionName(inst.region)} ({inst.region})
+                </Tag>
+              </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Status">
               {getStatusTag(inst.state)}
             </Descriptions.Item>
-            <Descriptions.Item label="AWS Region">
-              <Tag color="blue" style={{ wordBreak: 'break-word' }}>
-                {getRegionName(inst.region)} ({inst.region})
-              </Tag>
+            <Descriptions.Item label="AWS EC2 ID">
+              <code style={{ color: '#8b949e', wordBreak: 'break-all' }}>{inst.instance_id}</code>
             </Descriptions.Item>
             <Descriptions.Item label="Public IPv4">
               {inst.public_ip ? (
@@ -204,15 +230,15 @@ export const StatusCard: React.FC<StatusCardProps> = ({
                 </Text>
               )}
             </Descriptions.Item>
-            <Descriptions.Item label="Session TTL">
-              {inst.ttl_minutes && inst.ttl_minutes > 0 ? (
-                <Space size={4} wrap>
-                  <ClockCircleOutlined style={{ color: '#fa8c16' }} />
-                  <Text style={{ color: '#fa8c16' }}>{inst.ttl_minutes} mins auto-teardown</Text>
-                </Space>
-              ) : (
-                <Text type="secondary">Manual Teardown</Text>
-              )}
+            <Descriptions.Item label="Lifecycle">
+              <Space size={6} wrap>
+                <Tag color="cyan" icon={<PauseCircleOutlined />} style={{ margin: 0 }}>
+                  Warm Standby
+                </Tag>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Pause / Resume enabled
+                </Text>
+              </Space>
             </Descriptions.Item>
             <Descriptions.Item label="Instance Type">
               {inst.instance_type || 't3.micro'}
@@ -228,13 +254,15 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             marginTop: 16,
             display: 'flex',
             gap: 10,
+            flexWrap: 'wrap',
             flexDirection: screens.xs ? 'column-reverse' : 'row',
             justifyContent: 'flex-end',
           }}
         >
+          {/* Permanent Teardown */}
           <Popconfirm
             title="Terminate VPN Instance"
-            description={`Destroy node ${inst.instance_id} in ${getRegionName(inst.region)}? Compute charges will cease immediately.`}
+            description={`Destroy ${getRegionName(inst.region)} (${inst.region}) node? Compute charges will cease immediately.`}
             onConfirm={() => onDestroy(inst)}
             okText="Destroy"
             cancelText="Cancel"
@@ -251,6 +279,62 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             </Button>
           </Popconfirm>
 
+          {/* Pause VPN Button when Running */}
+          {isRunning && onStop && (
+            <Button
+              icon={<PauseCircleOutlined />}
+              loading={stoppingId === inst.instance_id}
+              onClick={() => onStop(inst)}
+              block={screens.xs}
+              style={{
+                height: 42,
+                background: '#d48806',
+                borderColor: '#d48806',
+                color: '#ffffff',
+                fontWeight: 600,
+              }}
+            >
+              Pause VPN (Sleep)
+            </Button>
+          )}
+
+          {/* While Stopping / Pausing */}
+          {isStopping && (
+            <Button
+              icon={<SyncOutlined spin />}
+              disabled
+              block={screens.xs}
+              style={{
+                height: 42,
+                background: '#21262d',
+                borderColor: '#30363d',
+                color: '#d48806',
+                fontWeight: 600,
+              }}
+            >
+              Pausing (Entering Standby)...
+            </Button>
+          )}
+
+          {/* Start VPN Button when Stopped */}
+          {isStopped && onStart && (
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              loading={startingId === inst.instance_id}
+              onClick={() => onStart(inst)}
+              block={screens.xs}
+              style={{
+                height: 42,
+                background: '#238636',
+                borderColor: '#2ea043',
+                fontWeight: 600,
+              }}
+            >
+              Start VPN (Resume)
+            </Button>
+          )}
+
           <Button
             type="primary"
             icon={<QrcodeOutlined />}
@@ -258,14 +342,14 @@ export const StatusCard: React.FC<StatusCardProps> = ({
             disabled={!isRunning}
             block={screens.xs}
             style={{
-              background: isRunning ? '#238636' : undefined,
-              borderColor: isRunning ? '#2ea043' : undefined,
+              background: isRunning ? '#1677ff' : undefined,
+              borderColor: isRunning ? '#1677ff' : undefined,
               height: 42,
               fontWeight: 600,
               flex: screens.xs ? undefined : 1,
             }}
           >
-            {isRunning ? 'WireGuard Pairing' : 'Waiting for Boot...'}
+            {isRunning ? 'WireGuard Pairing' : isStopped ? 'Gateway Paused' : isStopping ? 'Entering Standby...' : 'Waiting for Boot...'}
           </Button>
         </div>
       </div>

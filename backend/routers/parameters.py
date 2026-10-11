@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/parameters", tags=["Parameters & DynamoDB"])
 
 
 class SettingsModel(BaseModel):
-    ttlMinutes: int = Field(default=60, description="Session TTL in minutes")
+    ttlMinutes: int = Field(default=0, description="Session TTL in minutes (0 for disabled/standby)")
     monthlyBudget: float = Field(default=5.0, description="Monthly budget limit in USD")
     budgetAlertEnabled: bool = Field(default=True, description="Budget alert notification flag")
     defaultRegion: str = Field(default="ap-southeast-2", description="Default AWS region")

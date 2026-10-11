@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Select, Input, Button, Form, Typography, Space, Tooltip } from 'antd';
-import { GlobalOutlined, RocketOutlined, InfoCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { GlobalOutlined, RocketOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { Region, SpinUpRequest } from '../api/vpnClient';
 
 const { Text } = Typography;
@@ -26,7 +26,7 @@ export const RegionSelect: React.FC<RegionSelectProps> = ({
   defaultRegion = 'ap-southeast-2',
   defaultAllowedIps = '0.0.0.0/0',
   defaultInstanceType = 't3.micro',
-  defaultTtlMinutes = 60,
+  defaultTtlMinutes = 0,
 }) => {
   const [selectedRegion, setSelectedRegion] = useState<string>(defaultRegion);
   const [allowedIps, setAllowedIps] = useState<string>(defaultAllowedIps);
@@ -120,35 +120,6 @@ export const RegionSelect: React.FC<RegionSelectProps> = ({
             <Text type="secondary" style={{ fontSize: 12, marginTop: 4, display: 'block' }}>
               Default <code>0.0.0.0/0</code> routes all traffic. Custom subnets preserve local Wi-Fi.
             </Text>
-          </Form.Item>
-
-          <Form.Item
-            label={
-              <Space>
-                <ClockCircleOutlined style={{ color: '#1677ff' }} />
-                <span>Session TTL (Auto-Teardown)</span>
-                <Tooltip title="The EC2 node automatically self-terminates when this timer elapses to eliminate orphan compute fees.">
-                  <InfoCircleOutlined style={{ color: '#8c8c8c' }} />
-                </Tooltip>
-              </Space>
-            }
-            style={{ marginBottom: 14 }}
-          >
-            <Select
-              value={ttlMinutes}
-              onChange={(val) => setTtlMinutes(val)}
-              disabled={disabled || isSpinningUp}
-              size="large"
-              options={[
-                { value: 15, label: '15 Minutes (Short testing)' },
-                { value: 30, label: '30 Minutes' },
-                { value: 60, label: '1 Hour (Recommended)' },
-                { value: 120, label: '2 Hours' },
-                { value: 180, label: '3 Hours' },
-                { value: 240, label: '4 Hours' },
-                { value: 0, label: 'Manual Teardown (No Auto-Shutdown)' },
-              ]}
-            />
           </Form.Item>
 
           <Form.Item label="EC2 Instance Type" style={{ marginBottom: 16 }}>

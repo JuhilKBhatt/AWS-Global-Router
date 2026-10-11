@@ -1,10 +1,44 @@
 import axios from 'axios';
 
+declare const __APP_VPN_API_KEY__: string | undefined;
+
+export function getApiKey(): string {
+  const stored = localStorage.getItem('vpn_api_key');
+  if (stored !== null && stored !== '') return stored;
+  try {
+    if (typeof __APP_VPN_API_KEY__ !== 'undefined' && __APP_VPN_API_KEY__) {
+      return __APP_VPN_API_KEY__;
+    }
+  } catch {}
+  try {
+    const viteKey = (import.meta as any).env?.VITE_VPN_API_KEY;
+    if (viteKey) return viteKey;
+  } catch {}
+  return '';
+}
+
+export function setApiKey(key: string): void {
+  const trimmed = key.trim();
+  if (trimmed) {
+    localStorage.setItem('vpn_api_key', trimmed);
+  } else {
+    localStorage.removeItem('vpn_api_key');
+  }
+}
+
 const api = axios.create({
   baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+api.interceptors.request.use((config) => {
+  const key = getApiKey();
+  if (key) {
+    config.headers['X-API-Key'] = key;
+  }
+  return config;
 });
 
 export interface Region {
@@ -19,6 +53,15 @@ export interface SpinUpRequest {
   ttl_minutes?: number;
 }
 
+export interface DeviceItem {
+  id: string;
+  name: string;
+  ip?: string;
+  slot?: number;
+  client_config?: string;
+  created_at?: string;
+}
+
 export interface InstanceResponse {
   instance_id: string;
   region: string;
@@ -28,6 +71,7 @@ export interface InstanceResponse {
   launch_time?: string;
   client_config?: string;
   ttl_minutes?: number | null;
+  devices?: DeviceItem[];
 }
 
 export interface DestroyResponse {
@@ -87,6 +131,46 @@ export async function spinUpVpn(payload: SpinUpRequest): Promise<InstanceRespons
   return res.data;
 }
 
+export async function startVpn(region: string, instanceId?: string): Promise<InstanceResponse> {
+  const res = await api.post<InstanceResponse>('/vpn/start', null, {
+    params: { region, instance_id: instanceId },
+  });
+  return res.data;
+}
+
+export async function stopVpn(region: string, instanceId?: string): Promise<any> {
+  const res = await api.post('/vpn/stop', null, {
+    params: { region, instance_id: instanceId },
+  });
+  return res.data;
+}
+
+export async function quickToggleVpn(region: string): Promise<any> {
+  const res = await api.post('/vpn/quick-toggle', null, {
+    params: { region },
+  });
+  return res.data;
+}
+
+export async function fetchDevices(region: string): Promise<{ region: string; max_devices: number; devices: DeviceItem[] }> {
+  const res = await api.get(`/vpn/devices`, {
+    params: { region },
+  });
+  return res.data;
+}
+
+export async function addDevice(region: string, name: string): Promise<{ region: string; max_devices: number; devices: DeviceItem[] }> {
+  const res = await api.post('/vpn/devices/add', { region, name });
+  return res.data;
+}
+
+export async function deleteDevice(region: string, deviceId: string): Promise<{ region: string; max_devices: number; devices: DeviceItem[] }> {
+  const res = await api.delete(`/vpn/devices/${deviceId}`, {
+    params: { region },
+  });
+  return res.data;
+}
+
 export async function fetchInstanceStatus(
   instanceId: string,
   region: string
@@ -98,6 +182,7 @@ export async function fetchInstanceStatus(
 }
 
 export async function destroyVpn(
+
   instanceId: string,
   region: string
 ): Promise<DestroyResponse> {

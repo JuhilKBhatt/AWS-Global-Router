@@ -5,7 +5,6 @@ import {
   Input,
   InputNumber,
   Select,
-  Slider,
   Switch,
   Button,
   Typography,
@@ -27,12 +26,18 @@ import {
   UndoOutlined,
   DatabaseOutlined,
   CheckCircleOutlined,
+  SafetyCertificateOutlined,
+  CloudSyncOutlined,
+  MobileOutlined,
+  KeyOutlined,
 } from '@ant-design/icons';
 import {
   Region,
   AppSettings,
   fetchSettingsFromDB,
   saveSettingsToDB,
+  getApiKey,
+  setApiKey,
 } from '../api/vpnClient';
 
 export type { AppSettings };
@@ -40,7 +45,7 @@ export type { AppSettings };
 const { Title, Text, Paragraph } = Typography;
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  ttlMinutes: 60,
+  ttlMinutes: 0,
   monthlyBudget: 5.0,
   budgetAlertEnabled: true,
   defaultRegion: 'ap-southeast-2',
@@ -61,6 +66,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() => getApiKey());
 
   const initSettings = useCallback(async () => {
     try {
@@ -90,10 +96,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
   const handleFinish = async (values: AppSettings) => {
     try {
       setSaving(true);
-      const saved = await saveSettingsToDB(values);
+      setApiKey(apiKeyInput);
+      const saved = await saveSettingsToDB({ ...settings, ...values, ttlMinutes: 0 });
       setSettings(saved);
       setLastSyncTime(new Date().toLocaleTimeString());
-      message.success('Settings successfully saved to AWS DynamoDB!');
+      message.success('Settings and API credentials saved successfully!');
       if (onSettingsSaved) {
         onSettingsSaved(saved);
       }
@@ -143,7 +150,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
             System Preferences & Automation
           </Title>
           <Text type="secondary" style={{ fontSize: screens.xs ? 12 : 14 }}>
-            Configure idle session auto-teardown, spending budgets, and deployment defaults.
+            Configure spending budgets, default regions, and deployment presets.
           </Text>
         </div>
 
@@ -182,56 +189,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
           onFinish={handleFinish}
         >
           <Row gutter={[24, 24]}>
-            {/* Lifecycle & TTL */}
-            <Col xs={24}>
-              <Card
-                title={
-                  <Space>
-                    <ClockCircleOutlined style={{ color: '#1677ff' }} />
-                    <span>Ephemeral Lifecycle & Auto-Teardown TTL</span>
-                  </Space>
-                }
-                bordered={false}
-                style={{ borderRadius: 12, background: '#161b22' }}
-              >
-                <Paragraph type="secondary" style={{ fontSize: 13 }}>
-                  Automatically terminate active EC2 instances after an elapsed time to protect against
-                  forgotten sessions and recurring IPv4 compute billing.
-                </Paragraph>
-
-                <Form.Item
-                  name="ttlMinutes"
-                  label="Maximum Session Lifetime (TTL in Minutes)"
-                  tooltip="Set to 0 to disable automated teardown."
-                >
-                  <Slider
-                    min={15}
-                    max={240}
-                    step={15}
-                    marks={
-                      screens.xs
-                        ? {
-                            15: '15m',
-                            30: '30m',
-                            60: '1h',
-                            120: '2h',
-                            180: '3h',
-                            240: '4h',
-                          }
-                        : {
-                            15: '15m',
-                            30: '30m',
-                            60: '1h (Recommended)',
-                            120: '2h',
-                            180: '3h',
-                            240: '4h',
-                          }
-                    }
-                  />
-                </Form.Item>
-              </Card>
-            </Col>
-
             {/* Budget & Cost Alerts */}
             <Col xs={24}>
               <Card
@@ -332,6 +289,122 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
                     >
                       <Input size="large" placeholder="0.0.0.0/0" />
                     </Form.Item>
+                  </Col>
+                </Row>
+              </Card>
+            </Col>
+
+            {/* Control Plane API Security */}
+            <Col xs={24}>
+              <Card
+                title={
+                  <Space>
+                    <KeyOutlined style={{ color: '#faad14' }} />
+                    <span>Control Plane API Security</span>
+                  </Space>
+                }
+                bordered={false}
+                style={{ borderRadius: 12, background: '#161b22' }}
+              >
+                <Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
+                  If <code>VPN_API_KEY</code> is configured on your backend, enter your API key below. It will be passed via the <code>X-API-Key</code> header for all control plane operations (launch, pause, resume, device management) and stored securely in your browser's local storage.
+                </Paragraph>
+
+                <Row gutter={24} align="middle">
+                  <Col xs={24} md={18}>
+                    <Form.Item
+                      label="API Secret Key (VPN_API_KEY)"
+                      tooltip="Must match the VPN_API_KEY environment variable set on the backend."
+                      style={{ marginBottom: screens.xs ? 12 : 0 }}
+                    >
+                      <Input.Password
+                        size="large"
+                        placeholder="Enter your VPN_API_KEY"
+                        value={apiKeyInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setApiKeyInput(val);
+                          setApiKey(val);
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={6}>
+                    <Button
+                      type={apiKeyInput ? 'primary' : 'default'}
+                      size="large"
+                      style={{ width: '100%', marginTop: screens.xs ? 0 : 30 }}
+                      onClick={() => {
+                        setApiKey(apiKeyInput);
+                        message.success('API key saved to browser session!');
+                      }}
+                    >
+                      Save Key
+                    </Button>
+                  </Col>
+                </Row>
+              </Card>
+            </Col>
+
+            {/* Dynamic DNS, API Security & Warm Standby Info */}
+            <Col xs={24}>
+              <Card
+                title={
+                  <Space>
+                    <SafetyCertificateOutlined style={{ color: '#13c2c2' }} />
+                    <span>v1.2.0 Architecture & Security Profile</span>
+                  </Space>
+                }
+                bordered={false}
+                style={{ borderRadius: 12, background: '#161b22' }}
+              >
+                <Row gutter={[16, 16]}>
+                  <Col xs={24} md={12}>
+                    <div style={{ background: '#0d1117', padding: 14, borderRadius: 8, border: '1px solid #30363d' }}>
+                      <Space align="center" style={{ marginBottom: 6 }}>
+                        <CloudSyncOutlined style={{ color: '#52c41a' }} />
+                        <Text strong style={{ color: '#f0f6fc' }}>Anonymous DuckDNS Dynamic Host</Text>
+                      </Space>
+                      <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                        Permanent WireGuard endpoint mapping via <code>DUCKDNS_DOMAIN</code> and <code>DUCKDNS_TOKEN</code>. Public IP updates dynamically sync on EC2 boot without invalidating client configurations or revealing personal WHOIS records.
+                      </Paragraph>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <div style={{ background: '#0d1117', padding: 14, borderRadius: 8, border: '1px solid #30363d' }}>
+                      <Space align="center" style={{ marginBottom: 6 }}>
+                        <SafetyCertificateOutlined style={{ color: '#1677ff' }} />
+                        <Text strong style={{ color: '#f0f6fc' }}>Hardened REST Control Plane</Text>
+                      </Space>
+                      <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                        Mutating endpoints (<code>/spin-up</code>, <code>/start</code>, <code>/stop</code>, <code>/devices/*</code>) require header authentication with <code>X-API-Key</code> matching <code>VPN_API_KEY</code>. Unauthorized calls are blocked with <code>401 Unauthorized</code>.
+                      </Paragraph>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <div style={{ background: '#0d1117', padding: 14, borderRadius: 8, border: '1px solid #30363d' }}>
+                      <Space align="center" style={{ marginBottom: 6 }}>
+                        <MobileOutlined style={{ color: '#fa8c16' }} />
+                        <Text strong style={{ color: '#f0f6fc' }}>Multi-Device Mesh Allocation</Text>
+                      </Space>
+                      <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                        Supports up to 5 concurrent devices per node (<code>10.8.0.2</code> to <code>10.8.0.6</code>) with individual keypairs and independent config downloads via the QR code modal.
+                      </Paragraph>
+                    </div>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <div style={{ background: '#0d1117', padding: 14, borderRadius: 8, border: '1px solid #30363d' }}>
+                      <Space align="center" style={{ marginBottom: 6 }}>
+                        <ClockCircleOutlined style={{ color: '#eb2f96' }} />
+                        <Text strong style={{ color: '#f0f6fc' }}>Warm Standby (Zero-Cost Idle)</Text>
+                      </Space>
+                      <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                        Pause (stop) instances to release AWS public IPv4 addresses and halt compute charges while keeping disk state for instant 10–15 second resumption.
+                      </Paragraph>
+                    </div>
                   </Col>
                 </Row>
               </Card>

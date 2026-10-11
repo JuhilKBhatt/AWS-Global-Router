@@ -22,6 +22,10 @@ import {
   spinUpVpn,
   fetchInstanceStatus,
   destroyVpn,
+  startVpn,
+  stopVpn,
+  addDevice,
+  deleteDevice,
   Region,
   InstanceResponse,
   SpinUpRequest,
@@ -49,6 +53,8 @@ export const App: React.FC = () => {
   const [isSpinningUp, setIsSpinningUp] = useState<boolean>(false);
   const [activeInstances, setActiveInstances] = useState<InstanceResponse[]>([]);
   const [destroyingId, setDestroyingId] = useState<string | null>(null);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [stoppingId, setStoppingId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [selectedQrInstance, setSelectedQrInstance] = useState<InstanceResponse | null>(null);
 
@@ -80,7 +86,7 @@ export const App: React.FC = () => {
   // Poll instances that are still bootstrapping
   useEffect(() => {
     const hasBootstrapping = activeInstances.some(
-      (inst) => inst.state.toLowerCase() !== 'running' && inst.state.toLowerCase() !== 'terminated'
+      (inst) => inst.state.toLowerCase() !== 'running' && inst.state.toLowerCase() !== 'terminated' && inst.state.toLowerCase() !== 'stopped'
     );
     if (!hasBootstrapping) return;
 
@@ -88,7 +94,7 @@ export const App: React.FC = () => {
       try {
         const updatedList = await Promise.all(
           activeInstances.map(async (inst) => {
-            if (inst.state.toLowerCase() === 'running') return inst;
+            if (inst.state.toLowerCase() === 'running' || inst.state.toLowerCase() === 'stopped') return inst;
             try {
               return await fetchInstanceStatus(inst.instance_id, inst.region);
             } catch {
@@ -116,6 +122,70 @@ export const App: React.FC = () => {
       message.error(err?.response?.data?.detail || 'Failed to spin up VPN node.');
     } finally {
       setIsSpinningUp(false);
+    }
+  };
+
+  const handleStart = async (inst: InstanceResponse) => {
+    try {
+      setStartingId(inst.instance_id);
+      message.loading({ content: `Starting VPN instance in ${inst.region}...`, key: 'vpn-power' });
+      const updated = await startVpn(inst.region, inst.instance_id);
+      message.success({ content: `VPN node started! Bootstrapping connection...`, key: 'vpn-power' });
+      setActiveInstances((prev) =>
+        prev.map((i) => (i.instance_id === inst.instance_id ? { ...i, ...updated } : i))
+      );
+    } catch (err: any) {
+      console.error('Start VPN failed:', err);
+      message.error({ content: err?.response?.data?.detail || 'Failed to start VPN.', key: 'vpn-power' });
+    } finally {
+      setStartingId(null);
+    }
+  };
+
+  const handleStop = async (inst: InstanceResponse) => {
+    try {
+      setStoppingId(inst.instance_id);
+      message.loading({ content: `Stopping VPN instance in ${inst.region} (entering standby)...`, key: 'vpn-power' });
+      const res = await stopVpn(inst.region, inst.instance_id);
+      message.success({ content: `VPN entering Standby. Releasing public IPv4...`, key: 'vpn-power' });
+      setActiveInstances((prev) =>
+        prev.map((i) => (i.instance_id === inst.instance_id ? { ...i, state: res?.state || 'stopping', public_ip: undefined } : i))
+      );
+    } catch (err: any) {
+      console.error('Stop VPN failed:', err);
+      message.error({ content: err?.response?.data?.detail || 'Failed to pause VPN.', key: 'vpn-power' });
+    } finally {
+      setStoppingId(null);
+    }
+  };
+
+  const handleAddDevice = async (name: string) => {
+    if (!selectedQrInstance) return;
+    try {
+      await addDevice(selectedQrInstance.region, name);
+      const refreshed = await fetchInstanceStatus(selectedQrInstance.instance_id, selectedQrInstance.region);
+      setSelectedQrInstance(refreshed);
+      setActiveInstances((prev) =>
+        prev.map((i) => (i.instance_id === refreshed.instance_id ? refreshed : i))
+      );
+    } catch (err: any) {
+      console.error('Add device failed:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteDevice = async (deviceId: string) => {
+    if (!selectedQrInstance) return;
+    try {
+      await deleteDevice(selectedQrInstance.region, deviceId);
+      const refreshed = await fetchInstanceStatus(selectedQrInstance.instance_id, selectedQrInstance.region);
+      setSelectedQrInstance(refreshed);
+      setActiveInstances((prev) =>
+        prev.map((i) => (i.instance_id === refreshed.instance_id ? refreshed : i))
+      );
+    } catch (err: any) {
+      console.error('Delete device failed:', err);
+      throw err;
     }
   };
 
@@ -261,6 +331,10 @@ export const App: React.FC = () => {
                     onOpenQR={(inst) => setSelectedQrInstance(inst)}
                     onDestroy={handleDestroy}
                     destroyingId={destroyingId}
+                    onStart={handleStart}
+                    startingId={startingId}
+                    onStop={handleStop}
+                    stoppingId={stoppingId}
                     onRefresh={handleRefresh}
                     isRefreshing={isRefreshing}
                   />
@@ -274,6 +348,9 @@ export const App: React.FC = () => {
                   configText={selectedQrInstance.client_config || 'Bootstrapping client configuration...'}
                   region={selectedQrInstance.region}
                   instanceId={selectedQrInstance.instance_id}
+                  devices={selectedQrInstance.devices}
+                  onAddDevice={handleAddDevice}
+                  onDeleteDevice={handleDeleteDevice}
                 />
               )}
             </>

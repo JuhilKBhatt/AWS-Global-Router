@@ -44,11 +44,14 @@ AWS Global Router is a self-hosted cloud automation platform that dynamically pr
 ## Key Features
 
 * **Global Multi-Region Dispatch:** Choose from any standard AWS region (Tokyo, London, Sydney, N. Virginia, Frankfurt, etc.).
-* **True Ephemeral Lifecycle:** Spin up in ~60 seconds; terminate on demand to pay fractions of a cent per session.
-* **DynamoDB Parameter Store:** Cloud-persisted configurations (TTL, monthly budget, default regions, split tunnel subnets) and real-time cost tracking stored in AWS DynamoDB (`aws_global_router_parameters`).
+* **Multi-Device Mesh Allocation (v1.2.0):** Connect up to **5 devices** simultaneously per WireGuard gateway (`10.8.0.2` through `10.8.0.6`) with independent cryptographic keypairs, live capacity tracking, and an interactive **"+ Add Device"** manager in the UI.
+* **Warm Standby Lifecycle (v1.2.0):** Pause (Stop) and Resume (Start) nodes on demand. Pausing immediately releases AWS public IPv4 addresses and halts EC2 compute charges while preserving EBS root volume state, slashing boot time to ~10–15 seconds upon restart.
+* **Anonymous Dynamic DNS (DuckDNS, v1.2.0):** Automatically binds WireGuard endpoints to `<subdomain>.duckdns.org:51820`. Preserves mobile and desktop `.conf` configurations across EC2 pause/resume cycles while masking domain ownership and WHOIS footprints.
+* **Hardened REST Control Plane (v1.2.0):** All mutating API endpoints (`/spin-up`, `/start`, `/stop`, `/devices/*`) are fortified with API key authentication (`X-API-Key`).
+* **DynamoDB Parameter Store:** Cloud-persisted configurations (TTL, monthly budget, default regions, split tunnel subnets, region device keypairs) and real-time cost tracking stored in AWS DynamoDB (`aws_global_router_parameters`).
 * **Automated Cost Tracking & Visualizer:** Costs automatically update upon instance teardown with itemized breakdowns (EC2, IPv4, EBS, data transfer) and interactive multi-month stacked bar charts.
 * **Custom Split Tunneling:** Route only specific corporate subnets, lab networks, or web targets through the tunnel, preserving mobile and home bandwidth.
-* **Mobile & Desktop Friendly:** Scan the generated QR code directly in the official WireGuard app on iOS/Android or copy the client profile to macOS/Windows/Linux.
+* **Mobile & Desktop Friendly:** Scan the generated QR code directly in the official WireGuard app on iOS/Android or download device-specific `.conf` profiles for macOS/Windows/Linux.
 * **Hardened Security Posture:** 
   * Only UDP port 51820 is exposed to the public internet on the EC2 security group.
   * Web management UI requires zero port forwarding, protected by Cloudflare Access.
@@ -67,14 +70,21 @@ aws-global-router/
 ├── backend/
 │   ├── Dockerfile
 │   ├── requirements.txt
+│   ├── pytest.ini
 │   ├── main.py                  # FastAPI application entrypoint
 │   ├── core/
-│   │   ├── aws.py               # Boto3 EC2 provisioning & teardown logic
-│   │   ├── dynamodb.py          # Boto3 DynamoDB CRUD parameter store & cost tracking
-│   │   └── wireguard_template.sh # WireGuard user_data bootstrap script generator
-│   └── routers/
-│       ├── vpn.py               # API endpoints (/regions, /spin-up, /status, /destroy)
-│       └── parameters.py        # DynamoDB endpoints (/settings, /costs, /list, /raw)
+│   │   ├── aws.py               # Boto3 EC2 provisioning, warm standby & teardown
+│   │   ├── dynamodb.py          # Boto3 DynamoDB CRUD parameter store & 5-device peer store
+│   │   ├── duckdns.py           # Anonymous DuckDNS dynamic IP synchronization
+│   │   └── wireguard_template.sh # Multi-peer WireGuard user_data bootstrap generator
+│   ├── routers/
+│   │   ├── vpn.py               # API endpoints (/regions, /spin-up, /start, /stop, /devices)
+│   │   └── parameters.py        # DynamoDB endpoints (/settings, /costs, /list, /raw)
+│   └── tests/
+│       ├── test_api_security.py # API key authentication tests
+│       ├── test_devices.py      # 5-device peer allocation & limit tests
+│       ├── test_duckdns.py      # DuckDNS synchronization tests
+│       └── test_wireguard_template.py # Multi-peer config generation tests
 └── frontend/
     ├── Dockerfile
     ├── package.json
@@ -84,14 +94,14 @@ aws-global-router/
         ├── App.tsx              # Main dashboard view & navigation
         ├── components/
         │   ├── RegionSelect.tsx # Ant Design region selector
-        │   ├── QRCodeModal.tsx  # WireGuard pairing modal
-        │   ├── StatusCard.tsx   # Active instance state & destroy actions
+        │   ├── QRCodeModal.tsx  # Multi-device WireGuard pairing & Add Device modal
+        │   ├── StatusCard.tsx   # Active instances, Pause/Start warm standby & destroy actions
         │   ├── CostsView.tsx    # DynamoDB cost breakdown & stacked bar chart
-        │   ├── SettingsView.tsx # DynamoDB settings configuration
-        │   ├── Navbar.tsx       # Top/side navigation bar
-        │   └── Footer.tsx       # App footer with copyright and license
+        │   ├── SettingsView.tsx # DynamoDB settings & v1.2.0 architecture overview
+        │   ├── SideNavBar.tsx   # Top/side navigation bar
+        │   └── AppFooter.tsx    # App footer with copyright and license
         └── api/
-            └── vpnClient.ts     # Typed API client with DynamoDB endpoints
+            └── vpnClient.ts     # Typed API client with warm standby and device management
 ```
 
 ---
@@ -129,6 +139,16 @@ aws-global-router/
    AWS_DYNAMODB_SECRET_ACCESS_KEY=your_dynamodb_secret_access_key
    AWS_DYNAMODB_DEFAULT_REGION=ap-southeast-2
    AWS_DYNAMODB_TABLE_NAME=aws_global_router_parameters
+
+   # Optional: Anonymous Dynamic DNS (DuckDNS)
+   DUCKDNS_DOMAIN=your-subdomain
+   DUCKDNS_TOKEN=your_duckdns_token
+
+   # Optional: REST API Key Authentication
+   VPN_API_KEY=your_secure_api_key
+
+   # Optional: Lifecycle Mode (ephemeral | standby)
+   VPN_LIFECYCLE_MODE=standby
    ```
 
 3. **Launch with Docker Compose:**

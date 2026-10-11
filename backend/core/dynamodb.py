@@ -29,7 +29,7 @@ TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "aws_global_router_parameters")
 PARTITION_KEY = "parameters"
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
-    "ttlMinutes": 60,
+    "ttlMinutes": 0,
     "monthlyBudget": 5.0,
     "budgetAlertEnabled": True,
     "defaultRegion": "ap-southeast-2",
@@ -213,7 +213,7 @@ def load_settings() -> Dict[str, Any]:
 def save_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Persist settings parameter to DynamoDB."""
     cleaned: Dict[str, Any] = {
-        "ttlMinutes": int(settings.get("ttlMinutes", 60)),
+        "ttlMinutes": int(settings.get("ttlMinutes", 0)),
         "monthlyBudget": float(settings.get("monthlyBudget", 5.0)),
         "budgetAlertEnabled": bool(settings.get("budgetAlertEnabled", True)),
         "defaultRegion": str(settings.get("defaultRegion", "ap-southeast-2")),
@@ -339,3 +339,125 @@ def record_usage_cost(instance_id: str, elapsed_hours: float, region: str) -> No
         )
     except Exception as exc:
         logger.error("Failed to record usage cost in DynamoDB for %s: %s", instance_id, exc)
+
+
+MAX_DEVICES_PER_REGION = 5
+
+
+def get_peers_partition_key(region: str) -> str:
+    """Generate partition key for a region's persistent peer configuration."""
+    return f"peers_{region}"
+
+
+def get_or_create_region_peers(region: str) -> Dict[str, Any]:
+    """Retrieve or initialize persistent server keypair and client device slots for a region."""
+    table = get_dynamodb_resource().Table(TABLE_NAME)
+    pkey = get_peers_partition_key(region)
+    try:
+        res = table.get_item(Key={PARTITION_KEY: pkey})
+        item = res.get("Item")
+        if item:
+            data = _convert_decimals_to_floats(item)
+            if "max_devices" not in data:
+                data["max_devices"] = MAX_DEVICES_PER_REGION
+            return data
+    except Exception as exc:
+        logger.warning("Could not read peers from DynamoDB for %s: %s", region, exc)
+
+    from core.aws import generate_wireguard_keypair
+
+    srv_priv, srv_pub = generate_wireguard_keypair()
+    cli_priv, cli_pub = generate_wireguard_keypair()
+
+    duckdns_raw = os.getenv("DUCKDNS_DOMAIN", "").strip()
+    duckdns_domain = duckdns_raw[:-len(".duckdns.org")] if duckdns_raw.endswith(".duckdns.org") else duckdns_raw
+    endpoint_host = f"{duckdns_domain}.duckdns.org" if duckdns_domain else ""
+
+    initial_doc = {
+        PARTITION_KEY: pkey,
+        "region": region,
+        "max_devices": MAX_DEVICES_PER_REGION,
+        "server": {
+            "private_key": srv_priv,
+            "public_key": srv_pub,
+            "endpoint_host": endpoint_host,
+            "port": 51820,
+        },
+        "devices": [
+            {
+                "id": "dev_01",
+                "name": "Personal Device",
+                "slot": 1,
+                "ip": "10.8.0.2",
+                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "private_key": cli_priv,
+                "public_key": cli_pub,
+            }
+        ],
+    }
+
+    try:
+        table.put_item(Item=_convert_floats_to_decimals(initial_doc))
+    except Exception as exc:
+        logger.error("Failed to persist initial region peers for %s: %s", region, exc)
+
+    return initial_doc
+
+
+def add_device_peer(region: str, device_name: str) -> Dict[str, Any]:
+    """Add a new client device peer up to the 5-device maximum."""
+    doc = get_or_create_region_peers(region)
+    devices = doc.get("devices", [])
+    if len(devices) >= MAX_DEVICES_PER_REGION:
+        raise ValueError(f"Maximum limit of {MAX_DEVICES_PER_REGION} devices reached for region {region}")
+
+    used_slots = {int(d.get("slot", 0)) for d in devices}
+    next_slot = None
+    for s in range(1, MAX_DEVICES_PER_REGION + 1):
+        if s not in used_slots:
+            next_slot = s
+            break
+
+    if next_slot is None:
+        raise ValueError(f"Maximum limit of {MAX_DEVICES_PER_REGION} devices reached for region {region}")
+
+    from core.aws import generate_wireguard_keypair
+    import uuid
+
+    cli_priv, cli_pub = generate_wireguard_keypair()
+    new_dev = {
+        "id": f"dev_{uuid.uuid4().hex[:6]}",
+        "name": device_name.strip() or f"Device {next_slot}",
+        "slot": next_slot,
+        "ip": f"10.8.0.{next_slot + 1}",
+        "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "private_key": cli_priv,
+        "public_key": cli_pub,
+    }
+    devices.append(new_dev)
+    devices.sort(key=lambda d: d.get("slot", 1))
+    doc["devices"] = devices
+
+    table = get_dynamodb_resource().Table(TABLE_NAME)
+    try:
+        table.put_item(Item=_convert_floats_to_decimals(doc))
+    except Exception as exc:
+        logger.error("Failed to update devices in DynamoDB for %s: %s", region, exc)
+
+    return doc
+
+
+def delete_device_peer(region: str, device_id: str) -> Dict[str, Any]:
+    """Remove a client device peer from a region."""
+    doc = get_or_create_region_peers(region)
+    devices = [d for d in doc.get("devices", []) if d.get("id") != device_id]
+    doc["devices"] = devices
+
+    table = get_dynamodb_resource().Table(TABLE_NAME)
+    try:
+        table.put_item(Item=_convert_floats_to_decimals(doc))
+    except Exception as exc:
+        logger.error("Failed to delete device %s in DynamoDB: %s", device_id, exc)
+
+    return doc
+
