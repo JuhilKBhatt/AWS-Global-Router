@@ -1,6 +1,6 @@
 {
   "title": "AWS Global Router",
-  "description": "An ephemeral, on demand multi-region WireGuard VPN orchestrator. Dynamically provisions disposable cloud gateways across global AWS regions with automated session self teardown, split-tunnel routing, DynamoDB parameter storage and real-time cost analytics.",
+  "description": "An ephemeral, on-demand multi-region WireGuard VPN orchestrator delivering 90%+ cost savings over persistent cloud instances and commercial VPN subscriptions. Dynamically provisions disposable AWS cloud gateways with hypervisor-level self-teardown, zero-cost idle warm standby, split-tunnel egress optimization, and real-time DynamoDB cost analytics.",
   "techStack": {
     "Frontend": [
       "React",
@@ -19,6 +19,7 @@
       "AWS",
       "Docker",
       "Cloudflare Zero Trust",
+      "GitHub",
       "GitHub Actions"
     ],
     "Test Automation": [
@@ -38,14 +39,13 @@
   "version": "Prod",
   "versionNumber": "1.2.0",
   "Highlights": [
-    "On-demand global WireGuard gateway orchestration across AWS regions via automated EC2 UserData bootstrapping",
+    "90%+ cost reduction over commercial VPN subscriptions and 24/7 cloud VMs via pay-per-use on-demand gateways ($0.015-$0.025/hr vs $15+/mo)",
+    "Warm Standby (Zero-Cost Idle) lifecycle releasing public IPv4 and halting EC2 compute charges while enabling rapid ~10s gateway resumption",
+    "Granular 4-tier cost intelligence tracking EC2 compute, public IPv4 ($0.005/hr), EBS storage, and egress bandwidth in AWS DynamoDB with budget alerts",
+    "Custom split-tunnel traffic routing with QR code pairing, preserving mobile bandwidth and eliminating costly AWS egress data transfer ($0.09/GB)",
     "Multi-device mesh networking supporting up to 5 concurrent client keypairs per node (10.8.0.2 - 10.8.0.6) with interactive device management",
-    "Warm Standby (Sleep/Resume) lifecycle eliminating compute and public IPv4 charges while enabling rapid ~10s gateway resumption",
     "Anonymous Dynamic DNS (DuckDNS) integration ensuring persistent client configs and hidden infrastructure footprint",
-    "Hardened REST control plane secured with API key authentication (X-API-Key) protecting mutating endpoints",
-    "Cloud-persisted configuration and real-time cost intelligence powered by AWS DynamoDB",
-    "Custom split-tunnel traffic routing with scannable QR code generation for instant mobile and desktop pairing",
-    "Zero-trust ingress architecture integrating Cloudflare Access tunnels with hardened single-port UDP security groups"
+    "Hardened REST control plane secured with API key authentication (X-API-Key) and Zero-Trust ingress via Cloudflare Access tunnels"
   ],
   "Visibilty": true
 }
