@@ -649,7 +649,7 @@ def start_vpn_instance(region: str, instance_id: Optional[str] = None) -> Dict[s
                 inst = resv[0]["Instances"][0]
                 public_ip = inst.get("PublicIpAddress")
                 state = inst.get("State", {}).get("Name")
-                if public_ip and state == "running":
+                if public_ip:
                     break
         except Exception:
             pass
