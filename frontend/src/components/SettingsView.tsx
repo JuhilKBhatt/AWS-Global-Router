@@ -318,8 +318,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ regions, onSettingsS
                       <Select
                         size="large"
                         options={[
-                          { value: 't3.micro', label: 't3.micro (x86_64, Free-tier eligible)' },
-                          { value: 't4g.micro', label: 't4g.micro (Graviton ARM, 20% cheaper)' },
+                          { value: 't3.micro', label: 't3.micro (x86_64, Free-tier eligible)' }
                         ]}
                       />
                     </Form.Item>

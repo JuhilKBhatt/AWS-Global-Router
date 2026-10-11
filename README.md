@@ -25,7 +25,7 @@ AWS Global Router is a self-hosted cloud automation platform that dynamically pr
 ```
 
 1. **Control Plane:** A containerized FastAPI backend and React/Vite dashboard running locally (e.g., on a home Ubuntu server), exposed securely through a Cloudflare Zero Trust tunnel without opening inbound ports.
-2. **Infrastructure Automation:** Upon request, the backend leverages AWS Boto3 to provision an Amazon EC2 `t3.micro` or `t4g.micro` instance in the selected target region.
+2. **Infrastructure Automation:** Upon request, the backend leverages AWS Boto3 to provision an Amazon EC2 `t3.micro` instance in the selected target region.
 3. **Automated Bootstrap:** EC2 `user-data` automatically installs WireGuard, generates client/server cryptographic key pairs, enables IPv4 forwarding, and registers the client configuration.
 4. **Instant Pairing:** The generated WireGuard profile is displayed in the dashboard as a scannable QR code (for mobile) and a downloadable `.conf` file (for desktop/laptop).
 5. **Split Tunneling:** Traffic routing is constrained via customizable `AllowedIPs`, ensuring only targeted IP ranges flow through AWS while general traffic remains on local Wi-Fi or cellular data.

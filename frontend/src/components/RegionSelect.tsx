@@ -158,8 +158,7 @@ export const RegionSelect: React.FC<RegionSelectProps> = ({
               disabled={disabled || isSpinningUp}
               size="large"
               options={[
-                { value: 't3.micro', label: 't3.micro (x86_64 - 2 vCPU, 1 GiB RAM - Free Tier)' },
-                { value: 't4g.micro', label: 't4g.micro (Graviton ARM - 2 vCPU, 1 GiB RAM)' },
+                { value: 't3.micro', label: 't3.micro (x86_64 - 2 vCPU, 1 GiB RAM - Free Tier)' }
               ]}
             />
           </Form.Item>
